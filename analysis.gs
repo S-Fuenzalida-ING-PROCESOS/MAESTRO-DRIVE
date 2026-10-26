@@ -195,7 +195,14 @@ function mostrarHojaYEnviarArchivo(hojaVisible, usuarioPermitido) {
     const asunto = `Acceso al archivo: ${libro.getName()}`;
     const mensaje = `Hola,\n\nSe te ha dado acceso al archivo de Google Sheets para modificar el maestro de tu area con permisos de solo lectura. Puedes accederlo desde el siguiente enlace:\n\n${enlaceArchivo}\n\nSaludos.`;
 
-    GmailApp.sendEmail(usuarioPermitido, asunto, mensaje);
+    const logoBlob = obtenerLogoFirma_();
+    const plainBody = mensaje + '\n\n' + buildPlainSignature_();
+    const htmlBody = buildHtmlBodyWithSignature_(mensaje);
+
+    GmailApp.sendEmail(usuarioPermitido, asunto, plainBody, {
+      htmlBody: htmlBody,
+      inlineImages: { logo: logoBlob }
+    });
 
     Logger.log(`Correo enviado a ${usuarioPermitido} con el enlace al archivo.`);
   } else {
@@ -206,68 +213,90 @@ function mostrarHojaYEnviarArchivo(hojaVisible, usuarioPermitido) {
 
 
 }
-function resaltarCambiosEnHoja(hoja, datosOriginales, filaInicio, columnasClave, columnaEliminar, listaCambiada) {
-  // Crear un mapa para buscar elementos de manera eficiente en los datos originales
-  const generarClave = (fila, columnas) => columnas.map((col) => fila[col]).join("|");
-  const mapaOriginal = new Map(
-    datosOriginales.map((fila) => [generarClave(fila, columnasClave), fila])
+const COLOR_MODIFICADO = "#CFE2F3"; // azul claro
+const COLOR_ELIMINADO  = "#F4CCCC"; // rojo claro
+const COLOR_NUEVO      = "#D9EAD3"; // verde claro
+
+function valoresIguales(a, b) {
+  if (a instanceof Date && b instanceof Date) {
+    return a.getTime() === b.getTime();
+  }
+  return a === b;
+}
+
+function alinearFilasPorEncabezado(filas, encabezadosOrigen, encabezadosDestino) {
+  const columnasNoEncontradas = [];
+  const indicesOrigenPorDestino = encabezadosDestino.map((nombreDestino) => {
+    const idx = buscarColumnaFlexible(encabezadosOrigen, nombreDestino);
+    if (idx === -1) {
+      columnasNoEncontradas.push(nombreDestino);
+    }
+    return idx;
+  });
+
+  const filasAlineadas = filas.map((fila) =>
+    indicesOrigenPorDestino.map((idx) => (idx === -1 ? "" : fila[idx]))
   );
 
-  // Iterar sobre la lista cambiada para pintar directamente en la hoja
-  listaCambiada.forEach((filaCambiada, idxCambiado) => {
+  return { filas: filasAlineadas, columnasNoEncontradas };
+}
+
+function compararYPintarCambios(hoja, datosOriginalesArea, datosNuevos, filaInicio, columnasClave, columnaEliminar) {
+  const generarClave = (fila, columnas) => columnas.map((col) => fila[col]).join("|");
+
+  const mapaOriginal = new Map(
+    datosOriginalesArea.map((fila) => [generarClave(fila, columnasClave), fila])
+  );
+  const clavesVistas = new Set();
+  const filasFinal = [];
+  const infoFilas = [];
+
+  datosNuevos.forEach((filaCambiada) => {
     const clave = generarClave(filaCambiada, columnasClave);
+    clavesVistas.add(clave);
     const valorEliminar = filaCambiada[columnaEliminar];
-    const filaHoja = filaInicio + idxCambiado; // Índice en la hoja para la lista cambiada
+    const filaOriginal = mapaOriginal.get(clave);
 
-    if (valorEliminar === -1) {
-      // Destacar en rojo si el elemento es para eliminar
-      if (mapaOriginal.has(clave)) {
-        console.log("Eliminado:", filaCambiada);
-        hoja.getRange(filaHoja, 1, 1, filaCambiada.length).setBackground("red");
-      }
-    } else if (mapaOriginal.has(clave)) {
-      // Si existe en la original, revisar si hay cambios
-      const filaOriginal = mapaOriginal.get(clave);
-      let tieneCambios = false;
+    filasFinal.push(filaCambiada);
 
+    if (valorEliminar === -1 && filaOriginal) {
+      infoFilas.push({ tipo: "eliminado" });
+    } else if (filaOriginal) {
+      const columnasCambiadas = [];
       filaCambiada.forEach((valor, idx) => {
-        if (valor !== filaOriginal[idx]) {
-          // Destacar celdas con diferencias en azul
-          console.log("Diferencia:", filaCambiada, filaOriginal);
-          hoja.getRange(filaHoja, idx + 1).setBackground("blue");
-          tieneCambios = true;
-        }
+        if (!valoresIguales(valor, filaOriginal[idx])) columnasCambiadas.push(idx);
       });
-
-      if (!tieneCambios) {
-        // Si no hay cambios, no se hace nada (puedes personalizar este caso)
-      }
+      infoFilas.push(columnasCambiadas.length
+        ? { tipo: "modificado", columnasCambiadas }
+        : { tipo: "sin_cambio" });
     } else {
-      // Es un nuevo elemento, destacar toda la fila en verde
-      console.log("Nuevo:", filaCambiada);
-      hoja.getRange(filaHoja, 1, 1, filaCambiada.length).setBackground("green");
+      infoFilas.push({ tipo: "nuevo" });
+    }
+  });
+
+  // Filas que existían en la hoja de área y ya no están en el archivo del coordinador
+  mapaOriginal.forEach((filaOriginal, clave) => {
+    if (!clavesVistas.has(clave)) {
+      filasFinal.push(filaOriginal);
+      infoFilas.push({ tipo: "eliminado" });
+    }
+  });
+
+  escribirDatosYResaltar(hoja, filasFinal);
+
+  infoFilas.forEach((info, idx) => {
+    const filaHoja = filaInicio + idx;
+    if (info.tipo === "modificado") {
+      info.columnasCambiadas.forEach((col) => {
+        hoja.getRange(filaHoja, col + 1).setBackground(COLOR_MODIFICADO);
+      });
+    } else if (info.tipo === "nuevo") {
+      hoja.getRange(filaHoja, 1, 1, filasFinal[idx].length).setBackground(COLOR_NUEVO);
+    } else if (info.tipo === "eliminado") {
+      hoja.getRange(filaHoja, 1, 1, filasFinal[idx].length).setBackground(COLOR_ELIMINADO);
     }
   });
 }
-/**
- * @deprecated Reemplazada por fusionarCambiosPorColumna(). Esta versión
- * comparaba y reemplazaba FILAS COMPLETAS por posición, asumiendo que
- * listaCambiada (la hoja del coordinador) tiene exactamente las mismas
- * columnas, en el mismo orden, que listaOriginal (MAESTRO). Esa suposición
- * se rompe en la práctica (columnas ocultas borradas, MAESTRO creció después
- * de generar la hoja del coordinador, etc.), y cuando se rompe:
- *   1. filaCambiada (más angosta) reemplazaba a filaOriginal completa,
- *      descartando en silencio las columnas de MAESTRO que no estaban en
- *      esa posición de la hoja del coordinador.
- *   2. La mezcla resultante de filas de distinto ancho hacía fallar
- *      escribirDatosYResaltar() con "El número de columnas de los datos no
- *      coincide con el del intervalo" — y como esa función borra el
- *      contenido de la hoja ANTES de escribir, el error dejaba MAESTRO
- *      vacío. Esto es lo que se reportó como pérdida de datos en MAESTRO al
- *      usar "Validar Cambios".
- * No se eliminó esta función por si algo externo la referenciaba, pero
- * validar_cambios() ya no la usa.
- */
 function actualizarListaOriginal(listaOriginal, listaCambiada, columnaClave, columnaEliminar) {
   // Crea un mapa para buscar elementos de manera eficiente en la lista original
   const mapaOriginal = new Map(
@@ -306,115 +335,6 @@ function actualizarListaOriginal(listaOriginal, listaCambiada, columnaClave, col
   mapaOriginal.forEach((fila) => listaActualizada.push(fila));
 
   return listaActualizada;
-}
-
-/**
- * Fusiona los cambios de una hoja de coordinador hacia MAESTRO alineando
- * POR NOMBRE DE COLUMNA (no por posición). Es la base del fix de
- * validar_cambios(): ya no importa si la hoja del coordinador tiene menos
- * columnas que MAESTRO, más columnas, o en otro orden — solo se sobrescriben
- * en MAESTRO las columnas cuyo nombre de encabezado también existe en la
- * hoja del coordinador; todo lo demás en MAESTRO (incluidas columnas que esa
- * hoja ni siquiera trae) se conserva intacto. El resultado SIEMPRE tiene
- * exactamente el ancho de MAESTRO, así que nunca puede producir las filas de
- * ancho mixto que antes hacían fallar la escritura.
- *
- * @param {Array<Array>} dataOriginal       Filas de MAESTRO (sin encabezado).
- * @param {Array<string>} encabezadosOriginal Encabezados de MAESTRO.
- * @param {number} columnaClaveOriginal     Índice de la columna clave en MAESTRO.
- * @param {Array<Array>} dataCambiada       Filas de la hoja del coordinador (sin encabezado).
- * @param {Array<string>} encabezadosCambiada Encabezados de la hoja del coordinador.
- * @param {number} columnaClaveCambiada     Índice de la columna clave en la hoja del coordinador.
- * @param {number} columnaCupos             Índice de la columna CUPOS en la hoja del coordinador
- *                                           (un valor -1 ahí marca la fila para eliminar de MAESTRO).
- * @returns {{
- *   filas: Array<Array>,          Filas resultantes, listas para escribir en MAESTRO (mismo ancho).
- *   actualizadas: number,         Cuántas filas existentes de MAESTRO cambiaron.
- *   eliminadas: number,           Cuántas filas se eliminaron (CUPOS = -1).
- *   nuevas: number,               Cuántas claves de la hoja del coordinador no existían en MAESTRO.
- *   detalleNuevas: string[],      Esas claves nuevas, para mostrarlas en el resumen.
- *   columnasCoincidentes: number  Cuántas columnas en común se encontraron (0 = probablemente la
- *                                 hoja activa no es la de un coordinador real; no se debe escribir).
- * }}
- */
-function fusionarCambiosPorColumna(
-  dataOriginal, encabezadosOriginal, columnaClaveOriginal,
-  dataCambiada, encabezadosCambiada, columnaClaveCambiada, columnaCupos
-) {
-  const anchoOriginal = encabezadosOriginal.length;
-
-  // Columnas en común entre ambas hojas: índice en la hoja del coordinador -> índice en MAESTRO.
-  const mapaColumnas = [];
-  encabezadosCambiada.forEach((nombre, idxCambiada) => {
-    if (idxCambiada === columnaClaveCambiada) return; // la clave no se "sobrescribe", se usa para emparejar
-    const idxOriginal = buscarColumnaFlexible(encabezadosOriginal, [nombre]);
-    if (idxOriginal !== -1) {
-      mapaColumnas.push({ idxCambiada, idxOriginal });
-    }
-  });
-
-  const mapaOriginal = new Map(
-    dataOriginal.map((fila) => [fila[columnaClaveOriginal], fila.slice()])
-  );
-
-  let actualizadas = 0;
-  let eliminadas = 0;
-  let nuevas = 0;
-  const detalleNuevas = [];
-
-  dataCambiada.forEach((filaCambiada) => {
-    const clave = filaCambiada[columnaClaveCambiada];
-    if (clave === "" || clave == null) return; // fila vacía en la hoja del coordinador
-
-    const marcaEliminar = filaCambiada[columnaCupos];
-
-    if (marcaEliminar === -1) {
-      if (mapaOriginal.has(clave)) {
-        mapaOriginal.delete(clave);
-        eliminadas++;
-      }
-      return;
-    }
-
-    if (mapaOriginal.has(clave)) {
-      const filaOriginal = mapaOriginal.get(clave);
-      let cambio = false;
-
-      mapaColumnas.forEach(({ idxCambiada, idxOriginal }) => {
-        const nuevoValor = filaCambiada[idxCambiada];
-        if (filaOriginal[idxOriginal] !== nuevoValor) {
-          filaOriginal[idxOriginal] = nuevoValor;
-          cambio = true;
-        }
-      });
-
-      if (cambio) {
-        mapaOriginal.set(clave, filaOriginal);
-        actualizadas++;
-      }
-    } else {
-      // Clave que no existe en MAESTRO: se crea una fila del ANCHO DE MAESTRO
-      // (nunca del ancho, más angosto, de la hoja del coordinador), llenando
-      // solo las columnas que esa hoja efectivamente trae.
-      const filaNueva = new Array(anchoOriginal).fill("");
-      filaNueva[columnaClaveOriginal] = clave;
-      mapaColumnas.forEach(({ idxCambiada, idxOriginal }) => {
-        filaNueva[idxOriginal] = filaCambiada[idxCambiada];
-      });
-      mapaOriginal.set(clave, filaNueva);
-      nuevas++;
-      detalleNuevas.push(String(clave));
-    }
-  });
-
-  return {
-    filas: Array.from(mapaOriginal.values()),
-    actualizadas,
-    eliminadas,
-    nuevas,
-    detalleNuevas,
-    columnasCoincidentes: mapaColumnas.length,
-  };
 }
 
 function horariosPorRut(data){
@@ -1162,29 +1082,42 @@ function removeSpecificPermissions(fileId, emails) {
   });
 }
 function removePermissionsFromList(folderId, lista_datos) {
-  // Obtén la carpeta por su ID
-  var folder = DriveApp.getFolderById(folderId);
+  const folder = DriveApp.getFolderById(folderId);
 
-  // Recorre cada elemento de la lista
   lista_datos.forEach(function(entry) {
-    var email = entry.mail;
-    var archivos = entry.archivos;
+    const email = entry.mail;
+    const archivos = entry.archivos;
 
-    // Para cada archivo en la lista del usuario
     archivos.forEach(function(fileName) {
-      // Busca el archivo por su nombre dentro de la carpeta
-      var files = folder.getFilesByName(fileName);
+      const files = folder.getFilesByName(fileName);
 
       if (files.hasNext()) {
-        var file = files.next(); // Obtén el archivo
+        const file = files.next();
+        const fileId = file.getId();
 
         try {
-          // Quita permisos para este correo
-          file.removeEditor(email); // Intenta eliminar como editor
-          
-          Logger.log("Permisos eliminados para " + email + " en el archivo: " + fileName);
+          const respuesta = Drive.Permissions.list(fileId, {
+            supportsAllDrives: true,
+            fields: "permissions(id,emailAddress,role,type)"
+          });
+          const permisos = respuesta.permissions || [];
+          const permiso = permisos.find(p =>
+            (p.emailAddress || "").toLowerCase() === email.toLowerCase()
+          );
+
+          if (permiso) {
+            Drive.Permissions.update(
+              { role: "reader" },
+              fileId,
+              permiso.id,
+              { supportsAllDrives: true }
+            );
+            Logger.log("Permiso de edición removido (queda como lector) para " + email + " en el archivo: " + fileName);
+          } else {
+            Logger.log(email + " no tenía permisos en el archivo: " + fileName + ", no hay nada que quitar.");
+          }
         } catch (e) {
-          Logger.log("No se pudo eliminar permisos para " + email + " en el archivo: " + fileName + ". Error: " + e.message);
+          Logger.log("No se pudo ajustar permisos para " + email + " en el archivo: " + fileName + ". Error: " + e.message);
         }
       } else {
         Logger.log("No se encontró el archivo: " + fileName + " en la carpeta para el usuario: " + entry.name);
@@ -1475,10 +1408,40 @@ function procesarMultiplesHojasHomologas(sheetNames) {
 function ocultarColumnasExcepto(hoja, columnasVisibles) {
   const ultimaColumna = hoja.getLastColumn();
   const encabezados = hoja.getRange(1, 1, 1, ultimaColumna).getValues()[0];
+  const visiblesNormalizados = columnasVisibles.map(normalizarEncabezado);
 
   encabezados.forEach((nombreColumna, index) => {
-    if (!columnasVisibles.includes(nombreColumna)) {
-      hoja.hideColumns(index + 1);
+    const col = index + 1;
+    const esVisible = visiblesNormalizados.includes(normalizarEncabezado(nombreColumna));
+    if (esVisible) {
+      hoja.showColumns(col);
+    } else {
+      hoja.hideColumns(col);
+    }
+  });
+}
+
+function ocultarFilasExcepto(hoja, nombreColumnaFiltro, valorPermitido) {
+  const ultimaFila = hoja.getLastRow();
+  const ultimaColumna = hoja.getLastColumn();
+  if (ultimaFila < 2) return;
+
+  const encabezados = hoja.getRange(1, 1, 1, ultimaColumna).getValues()[0];
+  const colFiltro = buscarColumnaFlexible(encabezados, nombreColumnaFiltro);
+  if (colFiltro === -1) {
+    throw new Error(`No se encontró la columna "${nombreColumnaFiltro}" para filtrar filas.`);
+  }
+
+  const valores = hoja.getRange(2, colFiltro + 1, ultimaFila - 1, 1).getValues();
+  const valorNormalizado = normalizarEncabezado(valorPermitido);
+
+  valores.forEach((fila, idx) => {
+    const filaHoja = idx + 2; // +2 porque partimos en la fila 2
+    const visible = normalizarEncabezado(fila[0]) === valorNormalizado;
+    if (visible) {
+      hoja.showRows(filaHoja);
+    } else {
+      hoja.hideRows(filaHoja);
     }
   });
 }
@@ -1530,7 +1493,7 @@ function construirMapaColumnasListado(encabezados) {
 
 function construirMapaColumnasMaestro(encabezados) {
   return {
-    LLAVE: obtenerIndiceObligatorio(encabezados, ["LLAVE Código- sec ", "LLAVE Código- sec", "LLAVE", "LLAVE CODIGO SEC"]),
+    LLAVE: obtenerIndiceObligatorio(encabezados, ["LLAVE Código- sec", "LLAVE Código- sec", "LLAVE", "LLAVE CODIGO SEC"]),
     MANDANTE: obtenerIndiceObligatorio(encabezados, ["CURSO MANDANTE", "MANDANTE"]),
     CONECTOR: obtenerIndiceObligatorio(encabezados, ["CONECTOR DE LIGA"]),
     MATERIA: obtenerIndiceObligatorio(encabezados, ["MATERIA"]),
