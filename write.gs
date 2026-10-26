@@ -147,7 +147,10 @@ function escribirDatosYResaltar(hoja, datos) {
       );
     }
   }
-  if (numColumnasDatos !== anchoHoja) {
+  // El ancho exacto solo se exige en MAESTRO (escribir menos columnas borraría
+  // las columnas finales). Las hojas de área/coordinador mantienen el
+  // comportamiento original en este punto.
+  if (hoja.getName() === "MAESTRO" && numColumnasDatos !== anchoHoja) {
     throw new Error(
       `Los datos a escribir tienen ${numColumnasDatos} columna(s), pero la hoja "${hoja.getName()}" tiene ${anchoHoja}. No se modificó la hoja para evitar perder información.`
     );
