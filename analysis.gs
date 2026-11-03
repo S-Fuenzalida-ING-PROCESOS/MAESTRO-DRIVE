@@ -400,7 +400,8 @@ function verificarCasillastodasVacias(lista, indices) {
 // 15 HORA INICIO · 16 HORA FIN · 17 INDICADOR SESION · 18 PROF. PRINCIPAL · 19 OTROS PROF.
 // 20 LABORATORIO · 21 CARACT. SALA P1 · 22 CARACT. SALA P2 · 23 OBSERVACIÓN · 24 METODOLOGIA
 //
-// periodos = {inicio_clases, fin_clases, inicio_ayud, fin_ayud} en "dd/mm/aaaa"
+// periodos = {inicio_clases, fin_clases, inicio_ayud} en "dd/mm/aaaa"
+// (ayudantías y laboratorios terminan el mismo día que las clases)
 function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_completo,periodos){
   const col_area=obtenerNumeroDeColumna(hoja_maestro,"AREA",1)
   const col_codigo=obtenerNumeroDeColumna(hoja_maestro,"CODIGO",1)
@@ -433,7 +434,7 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
     iniClas: dpsa_parsearFecha_(periodos.inicio_clases),
     finClas: dpsa_parsearFecha_(periodos.fin_clases),
     iniAyud: dpsa_parsearFecha_(periodos.inicio_ayud),
-    finAyud: dpsa_parsearFecha_(periodos.fin_ayud)
+    finAyud: dpsa_parsearFecha_(periodos.fin_clases)
   }
   const anioRef = P.iniClas ? P.iniClas.getFullYear() : new Date().getFullYear()
 
@@ -454,6 +455,15 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
       case "EXAM": return entrada[col_sala_exam];
       default: return "";
     }
+  }
+
+  // Sala especial: va en LABORATORIO y se replica en PRIORIDAD 1 y 2.
+  // "SALA CON ENCHUFE INDIVIDUAL" no es una sala: solo va en PRIORIDAD 1 y 2.
+  function asignar_sala(fila,sala){
+    const s=String(sala||"").trim()
+    fila[20]=dpsa_norm_(s)=="SALA CON ENCHUFE INDIVIDUAL"?"":s
+    fila[21]=s
+    fila[22]=s
   }
 
   function base_entrada(entrada){
@@ -522,11 +532,9 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
           }
         }else if(tipo=="LABT"){
           nueva_entrada[19]=entrada[col_profesor_lab]
-          nueva_entrada[20]=entrada[col_sala_lab]
         }
 
-        nueva_entrada[21]=sala_especial_por_tipo(tipo,entrada)
-        nueva_entrada[22]=nueva_entrada[21]
+        asignar_sala(nueva_entrada,sala_especial_por_tipo(tipo,entrada))
 
         // Período: clases (y laboratorios de cursos sin CLAS) usan el período de clases;
         // el resto usa el de ayudantías/laboratorios.
@@ -570,8 +578,7 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
           nueva_entrada[14]=ev.dia||diaFecha
           nueva_entrada[15]=hora.split("-")[0]
           nueva_entrada[16]=hora.split("-")[1]||""
-          nueva_entrada[21]=sala_especial_por_tipo(tipoEval,entrada)
-          nueva_entrada[22]=nueva_entrada[21]
+          asignar_sala(nueva_entrada,sala_especial_por_tipo(tipoEval,entrada))
           filasEvaluacion.push(nueva_entrada)
           return
         }
@@ -607,8 +614,7 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
           nueva_entrada[14]=diaFecha
           nueva_entrada[15]=hora.split("-")[0]||""
           nueva_entrada[16]=hora.split("-")[1]||""
-          nueva_entrada[21]=salaPrueba
-          nueva_entrada[22]=salaPrueba
+          asignar_sala(nueva_entrada,salaPrueba)
           filasEvaluacion.push(nueva_entrada)
         }
       })
@@ -633,8 +639,7 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
         const dia=[...b.fila]
         dia[12]=convertirFechaAString(q.fecha)
         dia[13]=convertirFechaAString(q.fecha)
-        dia[21]=q.sala
-        dia[22]=q.sala
+        asignar_sala(dia,q.sala)
         dPSA.push(dia)
         desde=dpsa_sumarDias_(q.fecha,1)
       })
