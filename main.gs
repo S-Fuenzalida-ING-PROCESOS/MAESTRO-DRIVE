@@ -925,7 +925,19 @@ function crear_template_dpsa(){
   const fecha_inicio_ayud=pedirParametro_fechas("Introduce la fecha de \INICIO de AYUD/LAB","en formato dd/mm/aaaa")
   const fecha_fin_ayud=pedirParametro_fechas("Introduce la fecha de FIN de AYUD/LAB","dd/mm/aaaa")
 
-  const dPSA=agregar_fechas(rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_completo),fecha_inicio_clases,fecha_fin_clases,fecha_inicio_ayud,fecha_fin_ayud)
+  const fechasIngresadas=[fecha_inicio_clases,fecha_fin_clases,fecha_inicio_ayud,fecha_fin_ayud]
+  if(fechasIngresadas.some(f=>f===null)) return
+  if(fechasIngresadas.some(f=>!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(f).trim()))){
+    SpreadsheetApp.getUi().alert("Las fechas deben tener formato dd/mm/aaaa. No se generó la hoja DPSA.")
+    return
+  }
+
+  const dPSA=rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_completo,{
+    inicio_clases:fecha_inicio_clases.trim(),
+    fin_clases:fecha_fin_clases.trim(),
+    inicio_ayud:fecha_inicio_ayud.trim(),
+    fin_ayud:fecha_fin_ayud.trim()
+  })
 
   dPSA.unshift(encabezado)
   const hoja_dpsa=crear_hoja_nombre("DPSA",hojasActuales)
