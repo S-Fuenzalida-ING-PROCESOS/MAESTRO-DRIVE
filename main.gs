@@ -941,6 +941,8 @@ function crear_template_dpsa(){
   const hoja_dpsa=crear_hoja_nombre("DPSA",hojasActuales)
   const data_dpsa_anterior=hoja_dpsa.getDataRange().getDisplayValues()
   hoja_dpsa.getDataRange().clear()
+  // CURSO y SECC. como texto: así "0032" no se convierte en el número 32
+  fijarColumnasComoTexto_(hoja_dpsa,encabezado,["CURSO","SECC."],dPSA.length)
   escribirListaDeListas(hoja_dpsa,dPSA,1,1)
 
   const hoja_ajustes=crear_hoja_nombre("AJUSTES DPSA",hojasActuales)
@@ -951,8 +953,22 @@ function crear_template_dpsa(){
   if(cambios.length){
     const cols=cambios[0].length
     const validos=cambios.filter(f=>f.length==cols)
-    if(validos.length) agregarAlFinal(hoja_ajustes,validos,enunciado_ajustes)
+    if(validos.length){
+      fijarColumnasComoTexto_(hoja_ajustes,enunciado_ajustes,["CURSO","SECC."],hoja_ajustes.getLastRow()+validos.length+1)
+      agregarAlFinal(hoja_ajustes,validos,enunciado_ajustes)
+    }
   }
+}
+// Deja en formato texto plano las columnas indicadas (desde la fila 1 hasta numFilas),
+// para que valores como "0032" se escriban tal cual y no como número.
+function fijarColumnasComoTexto_(hoja,encabezado,nombres,numFilas){
+  const filas=Math.max(numFilas,1)
+  if(hoja.getMaxRows()<filas) hoja.insertRowsAfter(hoja.getMaxRows(),filas-hoja.getMaxRows())
+  nombres.forEach(nombre=>{
+    const col=encabezado.indexOf(nombre)
+    if(col<0) return
+    hoja.getRange(1,col+1,filas,1).setNumberFormat("@")
+  })
 }
 function validar_dpsa(){
   const ui = SpreadsheetApp.getUi();
