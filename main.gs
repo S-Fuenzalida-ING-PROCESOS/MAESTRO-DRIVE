@@ -923,9 +923,8 @@ function crear_template_dpsa(){
   const fecha_inicio_clases=pedirParametro_fechas("Introduce la fecha de INICIO de clases","dd/mm/aaaa")
   const fecha_fin_clases=pedirParametro_fechas("Introduce la fecha de FIN de clases","dd/mm/aaaa")
   const fecha_inicio_ayud=pedirParametro_fechas("Introduce la fecha de \INICIO de AYUD/LAB","en formato dd/mm/aaaa")
-  const fecha_fin_ayud=pedirParametro_fechas("Introduce la fecha de FIN de AYUD/LAB","dd/mm/aaaa")
 
-  const fechasIngresadas=[fecha_inicio_clases,fecha_fin_clases,fecha_inicio_ayud,fecha_fin_ayud]
+  const fechasIngresadas=[fecha_inicio_clases,fecha_fin_clases,fecha_inicio_ayud]
   if(fechasIngresadas.some(f=>f===null)) return
   if(fechasIngresadas.some(f=>!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(f).trim()))){
     SpreadsheetApp.getUi().alert("Las fechas deben tener formato dd/mm/aaaa. No se generó la hoja DPSA.")
@@ -935,8 +934,7 @@ function crear_template_dpsa(){
   const dPSA=rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_completo,{
     inicio_clases:fecha_inicio_clases.trim(),
     fin_clases:fecha_fin_clases.trim(),
-    inicio_ayud:fecha_inicio_ayud.trim(),
-    fin_ayud:fecha_fin_ayud.trim()
+    inicio_ayud:fecha_inicio_ayud.trim()
   })
 
   dPSA.unshift(encabezado)
@@ -1018,7 +1016,7 @@ function crear_template_HorariosING(){
   const fecha_inicio_clases=pedirParametro_fechas("Introduce la fecha de INICIO de clases","dd/mm/aaaa")
   const fecha_fin_clases=pedirParametro_fechas("Introduce la fecha de FIN de clases","dd/mm/aaaa")
   const fecha_inicio_ayud=pedirParametro_fechas("Introduce la fecha de \INICIO de AYUD/LAB","en formato dd/mm/aaaa")
-  const fecha_fin_ayud=pedirParametro_fechas("Introduce la fecha de FIN de AYUD/LAB","dd/mm/aaaa")
+  const fecha_fin_ayud=fecha_fin_clases // AYUD/LAB terminan junto con las clases
   const idSpreadsheet = id_hoja_programacion;
   const hoja_programacion = SpreadsheetApp.openById(idSpreadsheet).getSheetByName('DATOS MAESTRO');
   const data_programacion = hoja_programacion.getDataRange().getDisplayValues();
