@@ -393,7 +393,16 @@ function verificarCasillasNoVacias(lista, indices) {
 function verificarCasillastodasVacias(lista, indices) {
   return indices.every(indice => lista[indice] === "");
 }
-function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_completo){
+// Columnas de la hoja DPSA (índices 0-based)
+//  0 NRC · 1 MATERIA · 2 CURSO · 3 TITULO · 4 SECC. · 5 LISTA CRUZADA · 6 IDENTIFICADOR LIGA
+//  7 TIPO HORARIO (CLAS/AYUD/LABT/PRBA/EXAM) · 8 PARTE PERIODO · 9 CALIFICABLE · 10 CUPOS
+// 11 TIPO DE REUNIÓN (TEORIA/PRACTICA) · 12 FECHA INICIO · 13 FECHA FIN · 14 DIA
+// 15 HORA INICIO · 16 HORA FIN · 17 INDICADOR SESION · 18 PROF. PRINCIPAL · 19 OTROS PROF.
+// 20 LABORATORIO · 21 CARACT. SALA P1 · 22 CARACT. SALA P2 · 23 OBSERVACIÓN · 24 METODOLOGIA
+//
+// periodos = {inicio_clases, fin_clases, inicio_ayud, fin_ayud} en "dd/mm/aaaa"
+function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_completo,periodos){
+  const col_area=obtenerNumeroDeColumna(hoja_maestro,"AREA",1)
   const col_codigo=obtenerNumeroDeColumna(hoja_maestro,"CODIGO",1)
   const col_NRC=obtenerNumeroDeColumna(hoja_maestro,"NRC",1)
   const col_materia=obtenerNumeroDeColumna(hoja_maestro,"MATERIA",1)
@@ -418,8 +427,23 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
 
   const dPSA=[]
   const diasSemana = ['DOMINGO', 'LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
-  const headersFecha = encabezado_completo.slice(col_observaciones)
   const tiposEspeciales = { ING1400: "CLSS", ING4106: "CLSS", ING6104: "CLSS", ING6100: "OLIN" };
+
+  const P = {
+    iniClas: dpsa_parsearFecha_(periodos.inicio_clases),
+    finClas: dpsa_parsearFecha_(periodos.fin_clases),
+    iniAyud: dpsa_parsearFecha_(periodos.inicio_ayud),
+    finAyud: dpsa_parsearFecha_(periodos.fin_ayud)
+  }
+  const anioRef = P.iniClas ? P.iniClas.getFullYear() : new Date().getFullYear()
+
+  // Columnas del calendario: solo las que tienen una fecha como encabezado
+  // (la columna OBSERVACION y cualquier otra columna de texto quedan fuera).
+  const columnasFecha=[]
+  for(let c=col_observaciones+1;c<encabezado_completo.length;c++){
+    const f=dpsa_fechaDeEncabezado_(encabezado_completo[c],anioRef)
+    if(f) columnasFecha.push({col:c,fecha:f})
+  }
 
   function sala_especial_por_tipo(tipo,entrada){
     switch(tipo){
@@ -432,7 +456,7 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
     }
   }
 
-  function base_entrada(entrada,noMandanteLC){
+  function base_entrada(entrada){
     let e=new Array(25).fill("")
     e[0]=entrada[col_NRC]
     e[1]=entrada[col_materia]
@@ -442,138 +466,240 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
     e[5]=entrada[col_Lista_cruzada]
     e[6]=entrada[col_conector_liga]
     e[8]=entrada[col_codigo]=="ING6103"?"Internado":"1"
-    e[9]=noMandanteLC?"NO":"SI"
+    e[9]="SI"                                   // CALIFICABLE: siempre SI
     e[10]=entrada[col_cupos]
-    e[7]=tiposEspeciales[entrada[col_codigo]]||""
+    e[11]=tiposEspeciales[entrada[col_codigo]]||""
     e[24]=entrada[col_metodologia]
     return e
   }
 
   data_maestro.forEach((entrada)=>{
+    if(dpsa_norm_(entrada[col_area])=="POSTGRADO") return
+
     const codigo=entrada[col_codigo]
     const isMandante=entrada[col_mandante]=="SI"
     const hasLC=entrada[col_Lista_cruzada]
     const noMandanteLC=hasLC&&!isMandante
+    const tipoReunion=codigo=="ING6104"?"PRACTICA":"TEORIA"
     let pusoEntrada=false
 
-    // --- CLASS BLOCKS (LUNES-VIERNES) ---
+    // Lista cruzada no mandante: solo la fila base
     if(noMandanteLC){
-      let nueva_entrada=base_entrada(entrada,true)
-      dPSA.push(nueva_entrada)
-      pusoEntrada=true
-    }else{
-      const tieneClas = col_dias.some(col => {
-        return String(entrada[col]).split(",").some(b => {
-          const t = b.trim().split(" ")[0];
-          return t === "CLAS";
-        });
-      });
-
-      col_dias.forEach((columna,idx)=>{
-        const bloques=entrada[columna].split(",")
-        bloques.forEach((tipo_hora)=>{
-          if(!tipo_hora) return
-          pusoEntrada=true
-
-          let nueva_entrada=base_entrada(entrada,noMandanteLC)
-          let tipo=tipo_hora.trim().split(" ")[0]
-          let hora=tipo_hora.trim().split(" ")[1]
-          tipo=tipo=="LAB/TALLER"?"LABT":tipo
-
-          nueva_entrada[7]=codigo=="ING6104"?"PRACTICA":"TEORIA"
-          nueva_entrada[11]=tipo
-          nueva_entrada[14]=dias[idx].toUpperCase()
-          nueva_entrada[15]=hora?hora.split("-")[0]:""
-          nueva_entrada[16]=hora?hora.split("-")[1]:""
-          nueva_entrada[17]=tipo=="CLAS"?"1":tipo=="AYUD"?"2":"3"
-          nueva_entrada[18]=tipo=="CLAS"?entrada[col_profesor1]:tipo=="LABT"&&!tieneClas?entrada[col_profesor1]:""
-
-          if(tipo=="CLAS"){
-            let otros=[]
-            if(entrada[col_profesor2]) otros.push(entrada[col_profesor2])
-            nueva_entrada[19]=otros.join(",")
-            if(entrada[col_profesor2]){
-              nueva_entrada[23]=entrada[col_comentarios]
-            }
-          }else if(tipo=="LABT"){
-            nueva_entrada[19]=entrada[col_profesor_lab]
-            nueva_entrada[20]=entrada[col_sala_lab]
-          }
-
-          nueva_entrada[21]=sala_especial_por_tipo(tipo,entrada)
-          nueva_entrada[22]=nueva_entrada[21]
-
-          dPSA.push(nueva_entrada)
-        })
-      })
+      dPSA.push(base_entrada(entrada))
+      return
     }
 
-    // --- TEST ENTRIES (TARDE + EXAM) ---
-    if(noMandanteLC) return
-    const testData=entrada.slice(col_observaciones)
-    testData.forEach((cell,cellIdx)=>{
-      if(!cell) return
-      pusoEntrada=true
-      let partes=cell.trim().split(/\s+/)
-      let tipo=""
-      let hora=""
-      let dia=""
+    // --- BLOQUES SEMANALES (LUNES-VIERNES) ---
+    const tieneClas = col_dias.some(col => {
+      return String(entrada[col]).split(",").some(b => b.trim().split(" ")[0] === "CLAS");
+    });
 
-      if(partes.length==1){
-        tipo=partes[0]
-        hora="19:30-21:20"
-      }else if(partes.length==2){
-        tipo=partes[0]
-        hora=partes[1]
-      }else if(partes.length>=3){
-        dia=partes[0]
-        tipo=partes[1]
-        hora=partes.slice(2).join(" ")
-      }
+    const bloques=[] // {fila, tipo, dia, hi, hf, ini, fin, quiebres:Set}
+    col_dias.forEach((columna,idx)=>{
+      String(entrada[columna]).split(",").forEach((tipo_hora)=>{
+        if(!tipo_hora.trim()) return
+        pusoEntrada=true
 
-      if(tipo!="EXAM"&&tipo!="T"&&tipo!="TARDE") return
+        let nueva_entrada=base_entrada(entrada)
+        let tipo=tipo_hora.trim().split(" ")[0]
+        let hora=tipo_hora.trim().split(" ")[1]
+        tipo=tipo=="LAB/TALLER"?"LABT":tipo
 
-      let nueva_entrada=base_entrada(entrada,noMandanteLC)
-      nueva_entrada[7]=codigo=="ING6104"?"PRACTICA":"TEORIA"
-      nueva_entrada[11]=tipo=="EXAM"?"EXAM":"PRBA"
+        nueva_entrada[7]=tipo
+        nueva_entrada[11]=tipoReunion
+        nueva_entrada[14]=dias[idx].toUpperCase()
+        nueva_entrada[15]=hora?hora.split("-")[0]:""
+        nueva_entrada[16]=hora?hora.split("-")[1]:""
+        nueva_entrada[17]=tipo=="CLAS"?"1":tipo=="AYUD"?"2":"3"
+        nueva_entrada[18]=tipo=="CLAS"?entrada[col_profesor1]:tipo=="LABT"&&!tieneClas?entrada[col_profesor1]:""
 
-      if(headersFecha[cellIdx]&&headersFecha[cellIdx] instanceof Date){
-        let fechaStr=convertirFechaAString(headersFecha[cellIdx])
-        nueva_entrada[12]=fechaStr
-        nueva_entrada[13]=fechaStr
-        nueva_entrada[14]=dia||diasSemana[headersFecha[cellIdx].getDay()]
-      }
+        if(tipo=="CLAS"){
+          let otros=[]
+          if(entrada[col_profesor2]) otros.push(entrada[col_profesor2])
+          nueva_entrada[19]=otros.join(",")
+          if(entrada[col_profesor2]){
+            nueva_entrada[23]=entrada[col_comentarios]
+          }
+        }else if(tipo=="LABT"){
+          nueva_entrada[19]=entrada[col_profesor_lab]
+          nueva_entrada[20]=entrada[col_sala_lab]
+        }
 
-      nueva_entrada[15]=hora.split("-")[0]
-      nueva_entrada[16]=hora.split("-")[1]
+        nueva_entrada[21]=sala_especial_por_tipo(tipo,entrada)
+        nueva_entrada[22]=nueva_entrada[21]
 
-      let testTipo=tipo=="EXAM"?"EXAM":"PRBA"
-      nueva_entrada[21]=sala_especial_por_tipo(testTipo,entrada)
-      nueva_entrada[22]=nueva_entrada[21]
+        // Período: clases (y laboratorios de cursos sin CLAS) usan el período de clases;
+        // el resto usa el de ayudantías/laboratorios.
+        const periodoClases = tipo=="CLAS" || (tipo=="LABT"&&!tieneClas)
+        const ini=periodoClases?P.iniClas:P.iniAyud
+        const fin=periodoClases?P.finClas:P.finAyud
+        nueva_entrada[12]=ini?convertirFechaAString(ini):""
+        nueva_entrada[13]=fin?convertirFechaAString(fin):""
 
-      dPSA.push(nueva_entrada)
+        bloques.push({
+          fila:nueva_entrada, tipo:tipo, dia:nueva_entrada[14],
+          hi:dpsa_minutos_(nueva_entrada[15]), hf:dpsa_minutos_(nueva_entrada[16]),
+          ini:ini, fin:fin, quiebres:new Map() // fechaStr -> {fecha, sala}
+        })
+      })
     })
 
+    // --- EVALUACIONES (columnas de fecha del calendario) ---
+    const filasEvaluacion=[]
+    const salaPrueba=String(entrada[col_sala_prueb]||"").trim()
+
+    columnasFecha.forEach(({col,fecha})=>{
+      const celda=String(entrada[col]||"").trim()
+      if(!celda) return
+      pusoEntrada=true
+
+      celda.split(",").forEach((token)=>{
+        const ev=dpsa_parsearTokenEvaluacion_(token)
+        if(!ev) return
+        const diaFecha=diasSemana[fecha.getDay()]
+
+        // Pruebas de tarde y exámenes: fila propia
+        if(ev.tipo=="EXAM"||ev.tipo=="TARDE"){
+          const hora=ev.hora||"19:30-21:20"
+          const tipoEval=ev.tipo=="EXAM"?"EXAM":"PRBA"
+          let nueva_entrada=base_entrada(entrada)
+          nueva_entrada[7]=tipoEval
+          nueva_entrada[11]=tipoReunion
+          nueva_entrada[12]=convertirFechaAString(fecha)
+          nueva_entrada[13]=convertirFechaAString(fecha)
+          nueva_entrada[14]=ev.dia||diaFecha
+          nueva_entrada[15]=hora.split("-")[0]
+          nueva_entrada[16]=hora.split("-")[1]||""
+          nueva_entrada[21]=sala_especial_por_tipo(tipoEval,entrada)
+          nueva_entrada[22]=nueva_entrada[21]
+          filasEvaluacion.push(nueva_entrada)
+          return
+        }
+
+        // Pruebas en horario de CLAS/AYUD/LABT: quiebre si la sala de prueba
+        // es distinta a la sala que ya tiene ese bloque.
+        if(ev.tipo!="CLAS"&&ev.tipo!="AYUD"&&ev.tipo!="LABT") return
+        if(!salaPrueba) return
+
+        const evHi=ev.hora?dpsa_minutos_(ev.hora.split("-")[0]):null
+        const evHf=ev.hora?dpsa_minutos_(ev.hora.split("-")[1]):null
+        const candidatos=bloques.filter(b=>
+          b.tipo==ev.tipo && b.dia==diaFecha &&
+          (evHi===null||b.hi===null||b.hf===null||(evHi<b.hf&&evHf>b.hi))
+        )
+
+        if(candidatos.length){
+          candidatos.forEach(b=>{
+            if(dpsa_norm_(b.fila[21])==dpsa_norm_(salaPrueba)) return // ya tiene esa sala
+            if(b.ini&&fecha<b.ini) return
+            if(b.fin&&fecha>b.fin) return
+            b.quiebres.set(convertirFechaAString(fecha),{fecha:fecha,sala:salaPrueba})
+          })
+        }else{
+          // El curso pide evaluar en un bloque que no tiene ese día/hora:
+          // se solicita la sala con una fila de prueba propia.
+          const hora=ev.hora||""
+          let nueva_entrada=base_entrada(entrada)
+          nueva_entrada[7]="PRBA"
+          nueva_entrada[11]=tipoReunion
+          nueva_entrada[12]=convertirFechaAString(fecha)
+          nueva_entrada[13]=convertirFechaAString(fecha)
+          nueva_entrada[14]=diaFecha
+          nueva_entrada[15]=hora.split("-")[0]||""
+          nueva_entrada[16]=hora.split("-")[1]||""
+          nueva_entrada[21]=salaPrueba
+          nueva_entrada[22]=salaPrueba
+          filasEvaluacion.push(nueva_entrada)
+        }
+      })
+    })
+
+    // --- EMITIR BLOQUES CON SUS QUIEBRES ---
+    bloques.forEach(b=>{
+      if(!b.quiebres.size){
+        dPSA.push(b.fila)
+        return
+      }
+      const quiebres=[...b.quiebres.values()].sort((x,y)=>x.fecha-y.fecha)
+      let desde=b.ini
+      quiebres.forEach(q=>{
+        const antes=dpsa_sumarDias_(q.fecha,-1)
+        if(desde&&antes>=desde){
+          const tramo=[...b.fila]
+          tramo[12]=convertirFechaAString(desde)
+          tramo[13]=convertirFechaAString(antes)
+          dPSA.push(tramo)
+        }
+        const dia=[...b.fila]
+        dia[12]=convertirFechaAString(q.fecha)
+        dia[13]=convertirFechaAString(q.fecha)
+        dia[21]=q.sala
+        dia[22]=q.sala
+        dPSA.push(dia)
+        desde=dpsa_sumarDias_(q.fecha,1)
+      })
+      if(desde&&(!b.fin||desde<=b.fin)){
+        const tramo=[...b.fila]
+        tramo[12]=convertirFechaAString(desde)
+        tramo[13]=b.fin?convertirFechaAString(b.fin):""
+        dPSA.push(tramo)
+      }
+    })
+
+    filasEvaluacion.forEach(f=>dPSA.push(f))
+
     if((isMandante||tiposEspeciales[codigo])&&!pusoEntrada){
-      dPSA.push(base_entrada(entrada,false))
+      dPSA.push(base_entrada(entrada))
     }
   })
 
   return dPSA
 }
-function agregar_fechas(dpsa,fecha_inicio_clases,fecha_fin_clases,fecha_inicio_ayud,fecha_fin_ayud){
-  return dpsa.map((entrada)=>{
-    if(!entrada[17]){
-      // test entries already have dates set
-    }else if(entrada[18]){
-      entrada[12]=fecha_inicio_clases
-      entrada[13]=fecha_fin_clases
-    }else{
-      entrada[12]=fecha_inicio_ayud
-      entrada[13]=fecha_fin_ayud
-    }
-    return entrada
-  })
+
+// ---------- helpers DPSA ----------
+function dpsa_norm_(v){
+  return String(v==null?"":v).trim().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g,"")
+}
+function dpsa_parsearFecha_(s){
+  const m=String(s||"").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if(!m) return null
+  return new Date(Number(m[3]),Number(m[2])-1,Number(m[1]))
+}
+function dpsa_sumarDias_(fecha,n){
+  return new Date(fecha.getFullYear(),fecha.getMonth(),fecha.getDate()+n)
+}
+function dpsa_minutos_(h){
+  const m=String(h||"").trim().match(/^(\d{1,2}):(\d{2})/)
+  return m?Number(m[1])*60+Number(m[2]):null
+}
+// Encabezado de columna de calendario: fecha real, "dd/mm/aaaa" o "mar 02 mar" (sin año).
+function dpsa_fechaDeEncabezado_(h,anioRef){
+  if(h instanceof Date&&!isNaN(h)) return new Date(h.getFullYear(),h.getMonth(),h.getDate())
+  const s=String(h||"").trim()
+  if(!s) return null
+  const f=dpsa_parsearFecha_(s)
+  if(f) return f
+  const meses={ENE:0,FEB:1,MAR:2,ABR:3,MAY:4,JUN:5,JUL:6,AGO:7,SEP:8,SET:8,OCT:9,NOV:10,DIC:11}
+  const m=dpsa_norm_(s).match(/^[A-Z]{3}\.?\s+(\d{1,2})\s+([A-Z]{3})/)
+  if(m&&meses[m[2]]!==undefined) return new Date(anioRef,meses[m[2]],Number(m[1]))
+  return null
+}
+// Token de evaluación: "AYUD 13:30-15:20", "LAB/TALLER 8:30-10:20", "TARDE 19:30-21:20",
+// "T", "EXAM", "EXAM 9:00-11:00" o el formato antiguo "LUNES TARDE 19:30-21:20".
+function dpsa_parsearTokenEvaluacion_(token){
+  let partes=String(token||"").trim().split(/\s+/).filter(Boolean)
+  if(!partes.length) return null
+  const diasValidos=["LUNES","MARTES","MIERCOLES","JUEVES","VIERNES","SABADO","DOMINGO"]
+  let dia=""
+  if(partes.length>=2&&diasValidos.includes(dpsa_norm_(partes[0]))){
+    dia=dpsa_norm_(partes[0])
+    partes=partes.slice(1)
+  }
+  let tipo=dpsa_norm_(partes[0])
+  if(tipo=="T") tipo="TARDE"
+  if(tipo=="LAB/TALLER"||tipo=="LAB"||tipo=="LABT") tipo="LABT"
+  const hora=partes.slice(1).join("").trim()
+  return {dia:dia,tipo:tipo,hora:hora}
 }
 function rellenar_HORARIO_ING(data_maestro,col_dias,dias,hoja_maestro){
   const col_area=obtenerNumeroDeColumna(hoja_maestro,"AREA",1)
@@ -1456,7 +1582,7 @@ function construirMapaColumnasDPSA(encabezados) {
     CURSO: obtenerIndiceObligatorio(encabezados, ["CURSO"]),
     SECC: obtenerIndiceObligatorio(encabezados, ["SECC.", "SECC", "SECCION", "SECCIÓN"]),
     CUPOS: obtenerIndiceObligatorio(encabezados, ["CUPOS TOTALES NRC", "CUPOS"]),
-    TIPO: obtenerIndiceObligatorio(encabezados, ["TIPO DE REUNIÓN", "TIPO DE REUNION", "TIPO"]),
+    TIPO: obtenerIndiceObligatorio(encabezados, ["TIPO HORARIO", "TIPO DE HORARIO", "TIPO"]),
     FINI: obtenerIndiceObligatorio(encabezados, ["FECHA INICIO"]),
     FFIN: obtenerIndiceObligatorio(encabezados, ["FECHA FIN"]),
     DIA: obtenerIndiceObligatorio(encabezados, ["DIA", "DÍA"]),
