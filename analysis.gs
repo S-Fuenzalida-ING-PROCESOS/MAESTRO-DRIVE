@@ -395,8 +395,8 @@ function verificarCasillastodasVacias(lista, indices) {
 }
 // Columnas de la hoja DPSA (índices 0-based)
 //  0 NRC · 1 MATERIA · 2 CURSO · 3 TITULO · 4 SECC. · 5 LISTA CRUZADA · 6 IDENTIFICADOR LIGA
-//  7 TIPO HORARIO (CLAS/AYUD/LABT/PRBA/EXAM) · 8 PARTE PERIODO · 9 CALIFICABLE · 10 CUPOS
-// 11 TIPO DE REUNIÓN (TEORIA/PRACTICA) · 12 FECHA INICIO · 13 FECHA FIN · 14 DIA
+//  7 TIPO HORARIO (TEORIA/PRACTICA; CLSS/OLIN en fila base) · 8 PARTE PERIODO · 9 CALIFICABLE · 10 CUPOS
+// 11 TIPO DE REUNIÓN (CLAS/AYUD/LABT/PRBA/EXAM) · 12 FECHA INICIO · 13 FECHA FIN · 14 DIA
 // 15 HORA INICIO · 16 HORA FIN · 17 INDICADOR SESION · 18 PROF. PRINCIPAL · 19 OTROS PROF.
 // 20 LABORATORIO · 21 CARACT. SALA P1 · 22 CARACT. SALA P2 · 23 OBSERVACIÓN · 24 METODOLOGIA
 //
@@ -478,7 +478,7 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
     e[8]=entrada[col_codigo]=="ING6103"?"Internado":"1"
     e[9]="SI"                                   // CALIFICABLE: siempre SI
     e[10]=entrada[col_cupos]
-    e[11]=tiposEspeciales[entrada[col_codigo]]||""
+    e[7]=tiposEspeciales[entrada[col_codigo]]||""
     e[24]=entrada[col_metodologia]
     return e
   }
@@ -515,8 +515,8 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
         let hora=tipo_hora.trim().split(" ")[1]
         tipo=tipo=="LAB/TALLER"?"LABT":tipo
 
-        nueva_entrada[7]=tipo
-        nueva_entrada[11]=tipoReunion
+        nueva_entrada[7]=tipoReunion
+        nueva_entrada[11]=tipo
         nueva_entrada[14]=dias[idx].toUpperCase()
         nueva_entrada[15]=hora?hora.split("-")[0]:""
         nueva_entrada[16]=hora?hora.split("-")[1]:""
@@ -571,8 +571,8 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
           const hora=ev.hora||"19:30-21:20"
           const tipoEval=ev.tipo=="EXAM"?"EXAM":"PRBA"
           let nueva_entrada=base_entrada(entrada)
-          nueva_entrada[7]=tipoEval
-          nueva_entrada[11]=tipoReunion
+          nueva_entrada[7]=tipoReunion
+          nueva_entrada[11]=tipoEval
           nueva_entrada[12]=convertirFechaAString(fecha)
           nueva_entrada[13]=convertirFechaAString(fecha)
           nueva_entrada[14]=ev.dia||diaFecha
@@ -607,8 +607,8 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
           // se solicita la sala con una fila de prueba propia.
           const hora=ev.hora||""
           let nueva_entrada=base_entrada(entrada)
-          nueva_entrada[7]="PRBA"
-          nueva_entrada[11]=tipoReunion
+          nueva_entrada[7]=tipoReunion
+          nueva_entrada[11]="PRBA"
           nueva_entrada[12]=convertirFechaAString(fecha)
           nueva_entrada[13]=convertirFechaAString(fecha)
           nueva_entrada[14]=diaFecha
@@ -1587,7 +1587,7 @@ function construirMapaColumnasDPSA(encabezados) {
     CURSO: obtenerIndiceObligatorio(encabezados, ["CURSO"]),
     SECC: obtenerIndiceObligatorio(encabezados, ["SECC.", "SECC", "SECCION", "SECCIÓN"]),
     CUPOS: obtenerIndiceObligatorio(encabezados, ["CUPOS TOTALES NRC", "CUPOS"]),
-    TIPO: obtenerIndiceObligatorio(encabezados, ["TIPO HORARIO", "TIPO DE HORARIO", "TIPO"]),
+    TIPO: obtenerIndiceObligatorio(encabezados, ["TIPO DE REUNIÓN", "TIPO DE REUNION", "TIPO"]),
     FINI: obtenerIndiceObligatorio(encabezados, ["FECHA INICIO"]),
     FFIN: obtenerIndiceObligatorio(encabezados, ["FECHA FIN"]),
     DIA: obtenerIndiceObligatorio(encabezados, ["DIA", "DÍA"]),
