@@ -1801,11 +1801,19 @@ function generarReporteAlertas() {
 
       clasDeEste.forEach(clas => {
         otrosCursos.forEach(otro => {
-          if (otro.evaluaciones.length === 0) return;
+          // Solo cuenta si el otro curso rinde pruebas en ese mismo bloque de
+          // AYUD o LAB/TALLER (mismo día de la semana y horario que se cruza).
+          // Antes bastaba con que el otro curso tuviera cualquier evaluación,
+          // aunque fuera TARDE, y se generaban falsos topes.
           const ayudLabt = otro.bloques.filter(b =>
             (b.tipo === "AYUD" || b.tipo === "LABT") &&
             b.dia === clas.dia &&
-            solapan(clas.inicio, clas.fin, b.inicio, b.fin)
+            solapan(clas.inicio, clas.fin, b.inicio, b.fin) &&
+            otro.pruebas.some(p =>
+              p.bloque === b.tipo &&
+              p.dia_sem === b.dia &&
+              solapan(p.inicio, p.fin, b.inicio, b.fin)
+            )
           );
           ayudLabt.forEach(bloq => {
             alertas.push([
@@ -1859,7 +1867,11 @@ function generarReporteAlertas() {
     const ayudDias = curso.bloques.filter(b => b.tipo === "AYUD").map(b => b.dia);
     if (ayudDias.length === 0) return;
 
+    // Solo pruebas TARDE: los exámenes se rinden en el período de exámenes,
+    // cuando ya no hay ayudantías, así que no se comparan con el horario
+    // semanal.
     curso.evaluaciones.forEach(ev => {
+      if (ev.tipo === "EXAM") return;
       if (ayudDias.includes(ev.dia_sem)) {
         alertas.push([
           "TARDE + AYUD mismo día",
