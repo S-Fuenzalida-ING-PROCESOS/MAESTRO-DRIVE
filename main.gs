@@ -37,6 +37,9 @@ const LOGO_WIDTH_PX = 110;
 var linkFormulario1 = "https://script.google.com/macros/s/AKfycbxpeKdK8S64pYmz5sGubGt9mBxCGovOEy59V5UFXIWImd9x1bLGg-bdbeVLXouXjMQbNA/exec"; // Cambiar por el link del formulario Honorarios
 var linkFormulario2 = "https://script.google.com/macros/s/AKfycbyLywX9NM6ys4FZ2T1eDvua6QOLsR0Pkc7brFy6Amtr2nAei3y1LJikIXICoNiuj-aMJg/exec"; // Cambiar por el link del formulario Jornada
 var mensaje_intermedio=""
+// Hojas con las tablas de homologación de cada carrera (Obras Civiles es IOC;
+// antes figuraba "ICO" y sus homologaciones se ignoraban).
+const HOJAS_HOMOLOGACION = ["ICQ","ICC","ICI","ICE","IOC","ICA"]
 
 function onOpen(){
   const ui = SpreadsheetApp.getUi(); //crea referencia a la interfaz de usuario de Spreadsheet
@@ -535,8 +538,12 @@ function actualizar_datos() {
   const hoja_respuestas = hojasActuales.getSheetByName('RESPUESTAS');
 
   // ---------- RESPUESTAS ----------
-  let data_respuestas = hoja_respuestas.getDataRange().getValues();
-  data_respuestas.shift(); // ⬅️ eliminar encabezado
+  // Todas las hojas de respuesta se leen por el nombre de sus columnas.
+  const tablaRespuestas = leerTablaConEncabezado_(hoja_respuestas, 1);
+  const cR = columnasPorNombre_(tablaRespuestas.encabezados, {
+    rut: ["Rut", "RUT"], dia: ["Dia", "Día"], hora: ["Horario entrega"]
+  }, "RESPUESTAS");
+  const data_respuestas = tablaRespuestas.filas;
 
   const col_lunes = obtenerNumeroDeColumna(hoja_maestro, "LUNES", 1);
   const col_martes = obtenerNumeroDeColumna(hoja_maestro, "MARTES", 1);
@@ -548,15 +555,11 @@ function actualizar_datos() {
   const col_Metodologia = obtenerNumeroDeColumna(hoja_maestro, "METODOLOGIA", 1);
 
 
-  const horarios_por_rut = horariosPorRut(data_respuestas);
+  const horarios_por_rut = horariosPorRut(data_respuestas, cR);
   const columnasDias = [col_lunes, col_martes, col_miercoles, col_jueves, col_viernes];
 
   // ---------- PROFESORES ----------
-  let rut_profesores_jornada = hoja_profesores
-    .getDataRange()
-    .getValues();
-  rut_profesores_jornada.shift(); // ⬅️ eliminar encabezado
-  rut_profesores_jornada = rut_profesores_jornada.map(fila => fila[1]);
+  const rut_profesores_jornada = rutsHojaProfesores_(hoja_profesores, false);
 
   limpiarColumnas(hoja_maestro, columnasDias);
 
@@ -610,8 +613,11 @@ function actualizar_datos() {
 
   // ---------- PREFERENCIAS ----------
   const hoja_preferencias = hojasActuales.getSheetByName('PREFERENCIAS');
-  let data_preferencias = hoja_preferencias.getDataRange().getValues();
-  data_preferencias.shift(); // ⬅️ eliminar encabezado
+  const tablaPreferencias = leerTablaConEncabezado_(hoja_preferencias, 1);
+  const cP = columnasPorNombre_(tablaPreferencias.encabezados, {
+    codigo: ["CodigoCurso"], seccion: ["Secciones"], preferencia: ["2+1 o 3 seguidas"]
+  }, "PREFERENCIAS");
+  const data_preferencias = tablaPreferencias.filas;
 
   const col_codigo = obtenerNumeroDeColumna(hoja_maestro, "CODIGO", 1);
   const col_seccion = obtenerNumeroDeColumna(hoja_maestro, "SECCIONES", 1);
@@ -623,17 +629,28 @@ function actualizar_datos() {
 
   data_maestro.forEach(fila => {
     const curso_seccion = data_preferencias.find(
-      prof => prof[1] == fila[col_codigo] && prof[2] == fila[col_seccion]
+      prof => prof[cP.codigo] == fila[col_codigo] && prof[cP.seccion] == fila[col_seccion]
     );
     if (curso_seccion) {
-      fila[col_preferencias] = curso_seccion[3];
+      fila[col_preferencias] = curso_seccion[cP.preferencia];
     }
   });
 
   // ---------- OTROS ----------
   const hoja_otros = hojasActuales.getSheetByName('OTROS');
-  let data_otros = hoja_otros.getDataRange().getValues();
-  data_otros.shift(); // ⬅️ eliminar encabezado
+  const tablaOtros = leerTablaConEncabezado_(hoja_otros, 1);
+  const cO = columnasPorNombre_(tablaOtros.encabezados, {
+    rut: ["RUT"],
+    codigo: ["CodigoCurso"],
+    seccion: ["Secciones"],
+    comentarios: ["Comentarios"],
+    examen: ["EXAMEN (Sí o No)"],
+    cantidad: ["Cantidad de evaluaciones"],
+    horario: ["Horario de evaluaciones"],
+    metodologia: ["Metodologia", "Metodología"],
+    fechas: ["Fechas aproximadas pruebas/examen"]
+  }, "OTROS");
+  const data_otros = tablaOtros.filas;
 
   const col_comentarios = obtenerNumeroDeColumna(hoja_maestro, "COMENTARIOS PROFESOR", 1);
   const col_examen = obtenerNumeroDeColumna(hoja_maestro, "EXAMEN (Sí o No)", 1);
@@ -663,20 +680,20 @@ function actualizar_datos() {
 
   data_maestro.forEach(fila => {
     const cursos_seccion = data_otros.filter(
-      prof => prof[1] == fila[col_codigo] && prof[2] == fila[col_seccion]
+      prof => prof[cO.codigo] == fila[col_codigo] && prof[cO.seccion] == fila[col_seccion]
     );
     cursos_seccion.forEach(curso => {
-      const rut = curso[0];
+      const rut = curso[cO.rut];
       if (rut == fila[col_rut_profesor]) {
-        fila[col_comentarios] = curso[3];
-        fila[col_examen] = curso[4];
-        fila[col_cantidad_evaluaciones] = curso[5];
-        fila[col_tipo] = curso[6];
-        fila[col_Metodologia] = curso[7];
-        fila[col_fechas_prueba] = curso[8];
+        fila[col_comentarios] = curso[cO.comentarios];
+        fila[col_examen] = curso[cO.examen];
+        fila[col_cantidad_evaluaciones] = curso[cO.cantidad];
+        fila[col_tipo] = curso[cO.horario];
+        fila[col_Metodologia] = curso[cO.metodologia];
+        fila[col_fechas_prueba] = curso[cO.fechas];
       } else if (rut == fila[col_rut_profesor2]) {
-        fila[col_comentarios2] = curso[3];
-        fila[col_fechas_prueba2] = curso[8];
+        fila[col_comentarios2] = curso[cO.comentarios];
+        fila[col_fechas_prueba2] = curso[cO.fechas];
       }
     });
     if (cursos_seccion.length > 0) {
@@ -695,10 +712,7 @@ function enviarFormulariosCondicional() {
   const hoja_profesores = hojasActuales.getSheetByName("PROFESORES");
   const ui = SpreadsheetApp.getUi();
 
-  const rut_profesores_jornada = hoja_profesores
-    .getDataRange()
-    .getDisplayValues()
-    .map((fila)=>fila[1]);
+  const rut_profesores_jornada = rutsHojaProfesores_(hoja_profesores, true);
 
   const hojaEnviados = obtenerOcrearHojaFormulariosEnviados_(hojasActuales);
   const rutsYaNotificados = leerRutsFormulariosEnviados_(hojaEnviados);
@@ -787,10 +801,13 @@ function enviarFormulariosCondicional() {
   candidatos.forEach((candidato) => {
     try {
       enviarCorreo(candidato.email, candidato.rut, candidato.link, candidato.tipoCorreo);
-      hojaEnviados.appendRow([candidato.rut, new Date()]);
+      agregarFilaPorEncabezado_(hojaEnviados, { "RUT": candidato.rut, "FECHA ENVIO": new Date() });
       totalEnviados++;
     } catch (e) {
-      hojaErrores.appendRow([candidato.rut, candidato.email, candidato.tipoCorreo, new Date(), e.message]);
+      agregarFilaPorEncabezado_(hojaErrores, {
+        "RUT": candidato.rut, "EMAIL": candidato.email, "TIPO CORREO": candidato.tipoCorreo,
+        "FECHA": new Date(), "ERROR": e.message
+      });
       totalErrores++;
     }
   });
@@ -826,9 +843,8 @@ function obtenerOcrearHojaFormulariosEnviados_(spreadsheet) {
 function leerRutsFormulariosEnviados_(hoja) {
   const lastRow = hoja.getLastRow();
   if (lastRow < 2) return [];
-  const data = hoja.getRange(2, 1, lastRow - 1, 1).getValues();
-  return data
-    .map((fila) => String(fila[0] || "").trim())
+  return leerColumnaPorNombre_(hoja, ["RUT"], false)
+    .map((valor) => String(valor || "").trim())
     .filter((rut) => rut !== "");
 }
 
@@ -939,7 +955,12 @@ function crear_template_dpsa(){
 
   dPSA.unshift(encabezado)
   const hoja_dpsa=crear_hoja_nombre("DPSA",hojasActuales)
-  const data_dpsa_anterior=hoja_dpsa.getDataRange().getDisplayValues()
+  // DPSA anterior alineado por nombre de columna con el encabezado actual:
+  // una columna agregada a mano en la hoja DPSA no desordena la comparación.
+  const dpsaAnteriorCrudo=hoja_dpsa.getDataRange().getDisplayValues()
+  const data_dpsa_anterior=dpsaAnteriorCrudo.length>1
+    ? alinearFilasPorEncabezado(dpsaAnteriorCrudo.slice(1),dpsaAnteriorCrudo[0],encabezado).filas
+    : []
   hoja_dpsa.getDataRange().clear()
   // CURSO y SECC. como texto: así "0032" no se convierte en el número 32
   fijarColumnasComoTexto_(hoja_dpsa,encabezado,["CURSO","SECC."],dPSA.length)
@@ -947,7 +968,8 @@ function crear_template_dpsa(){
 
   const hoja_ajustes=crear_hoja_nombre("AJUSTES DPSA",hojasActuales)
 
-  const llaves_p=[0,1,2,4,5,7]
+  // Llaves de comparación por nombre: NRC, MATERIA, CURSO, SECC., LISTA CRUZADA, TIPO HORARIO
+  const llaves_p=["NRC","MATERIA","CURSO","SECC.","LISTA CRUZADA","TIPO HORARIO"].map(n=>encabezado.indexOf(n))
   const enunciado_ajustes=["AJUSTES","HORA-DIA CAMBIO","NRC","MATERIA","CURSO","TITULO","SECC.","LISTA CRUZADA","IDENTIFICADOR LIGA","TIPO HORARIO","PARTE PERIODO","CALIFICABLE","CUPOS TOTALES NRC","TIPO DE REUNIÓN","FECHA INICIO","FECHA FIN","DIA","HORA INICIO","HORA FIN","INDICADOR SESION LINEA/PROFESOR","PROFESOR PRINCIPAL","OTROS PROFESORES","LABORATORIO","CARACTERÍSTICA ESPECIAL SALA PRORIDAD 1","CARACTERÍSTICA ESPECIAL SALA PRORIDAD 2","OBSERVACIÓN","METODOLOGIA DE ENSEÑANZA"]
   const cambios=compareLists(normalizarListaDPSA(data_dpsa_anterior,llaves_p,encabezado),normalizarListaDPSA(dPSA,llaves_p,encabezado),llaves_p,enunciado_ajustes).filter((elemento)=>elemento[0]!="")
   if(cambios.length){
@@ -1112,17 +1134,20 @@ escribirListaDeListas(hoja_catalogo,data_catalogo,1,1)
 
 }
 function anadirCuposTentativos(){
-  const data = leerInscritosPorPeriodo();
+  const inscritos = leerInscritosPorPeriodo();
+  const data = inscritos.filas;
 
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = spreadsheet.getSheetByName('RAMOS INSCRITOS POR PERIODO');
   const sheetReprobaciones = spreadsheet.getSheetByName('HISTORICO REPROBACION');
+  if (!sheetReprobaciones) {
+    throw new Error('Falta la hoja "HISTORICO REPROBACION" (encabezados en la fila 2: CODIGO, Secciones Sem 10, Secciones Sem 20 y REPROBADOS %<período>).');
+  }
   const sheetMaestro = spreadsheet.getSheetByName('MAESTRO');
   const sheetCatalogo = spreadsheet.getSheetByName('CATALOGO');
-  const hojas_homologacion=["ICQ","ICC","ICI","ICE","ICO","ICA"]
-  const existencia_discrepancia_codigos = procesarMultiplesHojasHomologas(hojas_homologacion)
-  const numColumnaCurso = obtenerNumeroDeColumna(sheet, "CURSO", 1)
-  const numColumnaMateria = obtenerNumeroDeColumna(sheet, "MATERIA", 1)
+  const existencia_discrepancia_codigos = procesarMultiplesHojasHomologas(HOJAS_HOMOLOGACION)
+  const colsInscritos = columnasPorNombre_(inscritos.encabezados, { curso: "CURSO", materia: "MATERIA" }, "RAMOS INSCRITOS POR PERIODO")
+  const numColumnaCurso = colsInscritos.curso
+  const numColumnaMateria = colsInscritos.materia
   const numColumnaResquisitos = obtenerNumeroDeColumna(sheetCatalogo, "Requisitos", 1)
   const numColumnaNombre = obtenerNumeroDeColumna(sheetCatalogo, "TITULO", 1)
   const numColumnaCodigo = obtenerNumeroDeColumna(sheetCatalogo, "CODIGO", 1)
@@ -1228,7 +1253,6 @@ function anadirCuposTentativos(){
 function anadirListasCruzadas(){
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   const sheetCumplimiento = spreadsheet.getSheetByName('CUMPLIMIENTO DE MALLA');
-  const sheetHomologacion = spreadsheet.getSheetByName('HOMOLOGACION');
   const sheetMaestro = spreadsheet.getSheetByName('MAESTRO');
   const sheetCatalogo = spreadsheet.getSheetByName('CATALOGO');
   const data_maestro = leerHojaSinEncabezado("MAESTRO")
@@ -1242,8 +1266,7 @@ function anadirListasCruzadas(){
   const numColumnaCursosMaestro = obtenerNumeroDeColumna(sheetMaestro, "CURSO", 1)
   const numColumnaLlaveMaestro = obtenerNumeroDeColumna(sheetMaestro, "LLAVE Código- sec", 1)
   const numColumnaNrcMaestro = obtenerNumeroDeColumna(sheetMaestro, "NRC", 1)
-  const hojas_homologacion=["ICQ","ICC","ICI","ICE","ICO","ICA"]
-  const existencia_discrepancia_codigos = procesarMultiplesHojasHomologas(hojas_homologacion)
+  const existencia_discrepancia_codigos = procesarMultiplesHojasHomologas(HOJAS_HOMOLOGACION)
   console.log(JSON.stringify(existencia_discrepancia_codigos, null, 2));
 
   const dataAvanzeDeMalla = leerHojaSinEncabezado("CUMPLIMIENTO DE MALLA")
@@ -1350,21 +1373,20 @@ function borrarFilasPorRutConInput() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
 
   const hojas = [
-    { sheet: spreadsheet.getSheetByName('RESPUESTAS'), colRut: 3 },
-    { sheet: spreadsheet.getSheetByName('PREFERENCIAS'), colRut: 1 },
-    { sheet: spreadsheet.getSheetByName('OTROS'), colRut: 1 },
-    { sheet: spreadsheet.getSheetByName('ENTREGADOS'), colRut: 1 }
+    spreadsheet.getSheetByName('RESPUESTAS'),
+    spreadsheet.getSheetByName('PREFERENCIAS'),
+    spreadsheet.getSheetByName('OTROS'),
+    spreadsheet.getSheetByName('ENTREGADOS')
   ];
 
-  hojas.forEach(({ sheet, colRut }) => {
+  hojas.forEach((sheet) => {
     if (!sheet) return;
 
     const lastRow = sheet.getLastRow();
     if (lastRow < 2) return;
 
-    const data = sheet
-      .getRange(2, colRut, lastRow - 1, 1)
-      .getValues();
+    // La columna del RUT se busca por nombre en cada hoja.
+    const data = leerColumnaPorNombre_(sheet, ["RUT", "Rut"], false).map((v) => [v]);
 
     for (let i = data.length - 1; i >= 0; i--) {
       const rutCelda = data[i][0];
@@ -1380,20 +1402,12 @@ function enviarRecordatoriosNoRespondidos() {
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  const hojasRespuestas = [
-    { name: "RESPUESTAS", colRut: 3 },
-    { name: "PREFERENCIAS", colRut: 1 },
-    { name: "OTROS", colRut: 1 },
-    { name: "ENTREGADOS", colRut: 1 }
-  ];
+  const hojasRespuestas = ["RESPUESTAS", "PREFERENCIAS", "OTROS", "ENTREGADOS"];
 
   const sheetMaestro = ss.getSheetByName("MAESTRO");
   const sheetProfesores = ss.getSheetByName("PROFESORES");
 
-  const rut_profesores_jornada = sheetProfesores
-    .getDataRange()
-    .getDisplayValues()
-    .map(fila => fila[1]);
+  const rut_profesores_jornada = rutsHojaProfesores_(sheetProfesores, true);
 
   // Solo se le recuerda a quien YA fue notificado con el formulario inicial
   // (hoja FORMULARIOS ENVIADOS, la misma que usa enviarFormulariosCondicional).
@@ -1405,7 +1419,7 @@ function enviarRecordatoriosNoRespondidos() {
   // SET de profesores que ya respondieron
   const rutsRespondidos = new Set();
 
-  hojasRespuestas.forEach(({ name, colRut }) => {
+  hojasRespuestas.forEach((name) => {
 
     const sheet = ss.getSheetByName(name);
     if (!sheet) return;
@@ -1413,12 +1427,9 @@ function enviarRecordatoriosNoRespondidos() {
     const lastRow = sheet.getLastRow();
     if (lastRow < 2) return;
 
-    const data = sheet
-      .getRange(2, colRut, lastRow - 1, 1)
-      .getDisplayValues();
-
-    data.forEach(fila => {
-      const rut = String(fila[0]).trim();
+    // La columna del RUT se busca por nombre en cada hoja.
+    leerColumnaPorNombre_(sheet, ["RUT", "Rut"], true).forEach(valor => {
+      const rut = String(valor).trim();
       if (rut) rutsRespondidos.add(rut);
     });
 
@@ -1619,8 +1630,22 @@ function generarReporteAlertas() {
   const colCupos = idx("CUPOS");
   const colObs = idx("OBSERVACION");
 
+  // El horario programado está en las columnas Lunes … Viernes (primera letra
+  // mayúscula). Las columnas LUNES … VIERNES son la disponibilidad del
+  // profesor y no deben usarse aquí: antes se leían por error y el reporte no
+  // detectaba topes de bloques semanales.
   const diasNombres = ["LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES"];
-  const diasCol = diasNombres.map(name => idx(name));
+  const columnasHorario = [["Lunes"], ["Martes"], ["Miercoles", "Miércoles"], ["Jueves"], ["Viernes"]];
+  const diasCol = columnasHorario.map(nombres => {
+    for (const n of nombres) {
+      const i = idx(n);
+      if (i !== -1) return i;
+    }
+    return -1;
+  });
+  if (diasCol.some(c => c === -1)) {
+    throw new Error('No se encontraron en MAESTRO las columnas de horario Lunes, Martes, Miercoles, Jueves y Viernes.');
+  }
 
   const fechaHeaders = headers.slice(colObs + 1).filter(h => h instanceof Date);
   const fechaCols = [];

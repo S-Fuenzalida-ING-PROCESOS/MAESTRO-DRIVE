@@ -46,8 +46,19 @@ function obtenerOcrearHojaResumenRecordatorios_(ss) {
 function registrarRecordatorio(rut, nombre, email, formulario, resultado, detalle) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const hojaLog = obtenerOcrearHojaLogRecordatorios_(ss);
-  hojaLog.appendRow([new Date(), rut, nombre || "", email || "", formulario || "", resultado, detalle || ""]);
+  agregarFilaPorEncabezado_(hojaLog, {
+    "FECHA": new Date(), "RUT": rut, "NOMBRE": nombre || "", "EMAIL": email || "",
+    "FORMULARIO": formulario || "", "RESULTADO": resultado, "DETALLE": detalle || ""
+  });
   actualizarResumenRecordatorio(rut, nombre, email, resultado === "ENVIADO");
+}
+
+function columnasResumenRecordatorios_(hoja) {
+  const encabezados = hoja.getRange(1, 1, 1, Math.max(hoja.getLastColumn(), 1)).getValues()[0];
+  return columnasPorNombre_(encabezados, {
+    rut: "RUT", nombre: "NOMBRE", email: "EMAIL",
+    enviados: "RECORDATORIOS ENVIADOS", fallidos: "RECORDATORIOS FALLIDOS", ultimo: "ULTIMO INTENTO"
+  }, hoja.getName());
 }
 
 function actualizarResumenRecordatorio(rut, nombre, email, exito) {
@@ -55,28 +66,31 @@ function actualizarResumenRecordatorio(rut, nombre, email, exito) {
   const hoja = obtenerOcrearHojaResumenRecordatorios_(ss);
   const lastRow = hoja.getLastRow();
   const ahora = new Date();
+  const c = columnasResumenRecordatorios_(hoja);
 
   if (lastRow >= 2) {
-    const data = hoja.getRange(2, 1, lastRow - 1, 6).getValues();
+    const data = hoja.getRange(2, 1, lastRow - 1, hoja.getLastColumn()).getValues();
     for (let i = 0; i < data.length; i++) {
-      if (String(data[i][0]).trim() === String(rut).trim()) {
+      if (String(data[i][c.rut]).trim() === String(rut).trim()) {
         const filaSheet = i + 2;
-        const enviados = Number(data[i][3]) || 0;
-        const fallidos = Number(data[i][4]) || 0;
-        hoja.getRange(filaSheet, 2, 1, 5).setValues([[
-          nombre || data[i][1] || "",
-          email || data[i][2] || "",
-          exito ? enviados + 1 : enviados,
-          exito ? fallidos : fallidos + 1,
-          ahora
-        ]]);
+        const enviados = Number(data[i][c.enviados]) || 0;
+        const fallidos = Number(data[i][c.fallidos]) || 0;
+        const set = (col, valor) => hoja.getRange(filaSheet, col + 1).setValue(valor);
+        set(c.nombre, nombre || data[i][c.nombre] || "");
+        set(c.email, email || data[i][c.email] || "");
+        set(c.enviados, exito ? enviados + 1 : enviados);
+        set(c.fallidos, exito ? fallidos : fallidos + 1);
+        set(c.ultimo, ahora);
         return;
       }
     }
   }
 
   // Primer registro para este RUT.
-  hoja.appendRow([rut, nombre || "", email || "", exito ? 1 : 0, exito ? 0 : 1, ahora]);
+  agregarFilaPorEncabezado_(hoja, {
+    "RUT": rut, "NOMBRE": nombre || "", "EMAIL": email || "",
+    "RECORDATORIOS ENVIADOS": exito ? 1 : 0, "RECORDATORIOS FALLIDOS": exito ? 0 : 1, "ULTIMO INTENTO": ahora
+  });
 }
 
 function contarRecordatoriosEnviados(rut) {
@@ -85,10 +99,11 @@ function contarRecordatoriosEnviados(rut) {
   if (!hoja) return 0;
   const lastRow = hoja.getLastRow();
   if (lastRow < 2) return 0;
-  const data = hoja.getRange(2, 1, lastRow - 1, 4).getValues();
+  const c = columnasResumenRecordatorios_(hoja);
+  const data = hoja.getRange(2, 1, lastRow - 1, hoja.getLastColumn()).getValues();
   for (let i = 0; i < data.length; i++) {
-    if (String(data[i][0]).trim() === String(rut).trim()) {
-      return Number(data[i][3]) || 0;
+    if (String(data[i][c.rut]).trim() === String(rut).trim()) {
+      return Number(data[i][c.enviados]) || 0;
     }
   }
   return 0;
@@ -611,10 +626,7 @@ function reenviarFormularioPorRut(rutObjetivo) {
   const sheetMaestro = ss.getSheetByName("MAESTRO");
   const sheetProfesores = ss.getSheetByName("PROFESORES");
 
-  const rut_profesores_jornada = sheetProfesores
-    .getDataRange()
-    .getDisplayValues()
-    .map(fila => fila[1]);
+  const rut_profesores_jornada = rutsHojaProfesores_(sheetProfesores, true);
 
   const colMail1 = obtenerNumeroDeColumna(sheetMaestro, "EMAIL PROFESOR 1", 1);
   const colMail2 = obtenerNumeroDeColumna(sheetMaestro, "EMAIL PROFESOR 2", 1);

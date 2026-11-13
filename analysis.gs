@@ -57,64 +57,81 @@ const asignarSecciones = (cursos, nrcs,columnaCurso,columnaMateria,columnaNRC) =
 };
 
 
+// Columnas del MAESTRO que se copian tal cual desde el CATALOGO (mismo
+// nombre en ambas hojas). Se buscan por nombre: el orden de las columnas y
+// las columnas de ayuda que existan en cualquiera de las dos hojas no importan.
+const COLUMNAS_DESDE_CATALOGO = [
+  "Plan Común", "ICI", "IOC", "ICE", "ICC", "ICA", "ICQ",
+  "Clases", "Ayudantías", "Laboratorios o Talleres",
+  "Clases A PROGRAMAR", "Ayudantías PROGRAMAR", "Laboratorios o Talleres PROGRAMAR",
+  "Sala especial", "SCT-Chile", "Requisitos", "Habilidades Transversales"
+];
+
 function generar_Entradas(secciones,data_nrc,data_catalogo,hoja_catalogo,hoja_listado_nrc,hoja_presupuesto,hoja_maestro,procesado_presupuesto){
-  //Obitene las columnas por nombre
-  const col_SCT_Chile_maestro= obtenerNumeroDeColumna(hoja_maestro,"SCT-Chile",1)
-  const col_Requisitos_maestro= obtenerNumeroDeColumna(hoja_maestro,"Requisitos",1)
-  const col_Habilidades_transversales_maestro= obtenerNumeroDeColumna(hoja_maestro,"Habilidades Transversales",1)
-  const col_SCT_Chile_catalogo= obtenerNumeroDeColumna(hoja_catalogo,"SCT-Chile",1)
-  const col_Requisitos_catalogo= obtenerNumeroDeColumna(hoja_catalogo,"Requisitos",1)
-  const col_codigo_catalogo = obtenerNumeroDeColumna(hoja_catalogo,"CODIGO",1)
-  const col_Habilidades_catalogo= obtenerNumeroDeColumna(hoja_catalogo,"Habilidades Transversales",1)
-  const col_codigo_maestro=obtenerNumeroDeColumna(hoja_maestro,"CURSO",1)
-  const col_materia_maestro=obtenerNumeroDeColumna(hoja_maestro,"MATERIA",1)
-  const col_area_catalogo=obtenerNumeroDeColumna(hoja_catalogo,"AREA",1)
-  const col_titulo_catalogo=obtenerNumeroDeColumna(hoja_catalogo,"TITULO",1)
-  const col_nrc_listado_nrc=obtenerNumeroDeColumna(hoja_listado_nrc,"NRC",1)
-  const col_cupos_listado_nrc=obtenerNumeroDeColumna(hoja_listado_nrc,"CUPOS",1)
-  console.log("data nrc:",data_nrc)
-  return secciones.map((seccion,idx)=>{
+  // Todas las columnas se ubican por nombre (nunca por posición), así las
+  // columnas de ayuda que se agreguen al MAESTRO no desplazan los datos.
+  const anchoMaestro = obtenerCantidadDeColumnas(hoja_maestro)
+  const encabezadosMaestro = hoja_maestro.getRange(1, 1, 1, anchoMaestro).getValues()[0]
+  const encabezadosCatalogo = hoja_catalogo.getRange(1, 1, 1, hoja_catalogo.getLastColumn()).getValues()[0]
+  const encabezadosNrc = hoja_listado_nrc.getRange(1, 1, 1, hoja_listado_nrc.getLastColumn()).getValues()[0]
 
-    let entrada = new Array(obtenerCantidadDeColumnas(hoja_maestro))
-    entrada[0]="SI"
-    entrada[7]=seccion[0]//codigo ING1101
-    entrada[13]=seccion[1]//seccion 1
-    entrada[4]=seccion[2]// NRC 5670
-    entrada[col_codigo_maestro]=seccion[0].substring(3)
-    entrada[col_materia_maestro]=seccion[0].substring(0, 3)//ING
+  const cM = columnasPorNombre_(encabezadosMaestro, {
+    mandante: "CURSO MANDANTE",
+    area: "AREA",
+    llave: "LLAVE Código- sec",
+    nrc: "NRC",
+    codigo: "CODIGO",
+    materia: "MATERIA",
+    curso: "CURSO",
+    titulo: "TITULO",
+    inscritosEspejo: "INSCRITOS SEMESTRE ESPEJO ANTERIOR",
+    secciones: "SECCIONES"
+  }, "MAESTRO")
+  const cC = columnasPorNombre_(encabezadosCatalogo, { codigo: "CODIGO", area: "AREA", titulo: "TITULO" }, "CATALOGO")
+  const cN = columnasPorNombre_(encabezadosNrc, { nrc: "NRC", cupos: "CUPOS" }, "NRC POR PERIODO ESPEJO")
 
-    let codigo_seccion = seccion[0]+seccion[1]//ING11011
-    entrada[3]= codigo_seccion
-    let datos_catalogo=data_catalogo.find((curso)=>curso[col_codigo_catalogo]===seccion[0])
-    
-    //Puede que no encuentre ningun dato asociado en catalogo
-    if (datos_catalogo===undefined){
-    datos_catalogo = Array(data_catalogo[0].length) 
+  // Pares [columna MAESTRO, columna CATALOGO] para los datos que se copian.
+  // Si una columna no existe en alguna de las dos hojas, se avisa en el log y
+  // se omite (no se detiene la macro).
+  const copiasCatalogo = []
+  COLUMNAS_DESDE_CATALOGO.forEach((nombre) => {
+    const iM = buscarColumnaFlexible(encabezadosMaestro, [nombre])
+    const iC = buscarColumnaFlexible(encabezadosCatalogo, [nombre])
+    if (iM === -1 || iC === -1) {
+      console.log(`Agregar secciones: la columna "${nombre}" no está en ${iM === -1 ? "MAESTRO" : "CATALOGO"}; no se copia.`)
+      return
     }
-    
-    entrada[1]=datos_catalogo[col_area_catalogo]
-    entrada[10]=datos_catalogo[col_titulo_catalogo]
-    
-    let datos_nrc = data_nrc.find((curso)=>curso[col_nrc_listado_nrc]==seccion[2])//Busca por nrc
-    if (datos_nrc===undefined){
-    datos_nrc= Array(data_nrc[0].length) 
-    }
-    entrada[12]=datos_nrc[col_cupos_listado_nrc]//cupos de ese NRC si no encuentra devuelve undefined
-    
-    let detalles = extraerRango(datos_catalogo,obtenerNumeroDeColumna(hoja_catalogo,"Plan Común",1),obtenerNumeroDeColumna(hoja_catalogo,"Sala especial",1))
-    
-    entrada = reemplazarParteLista(entrada,16,35,detalles)
-    entrada[col_SCT_Chile_maestro]=datos_catalogo[col_SCT_Chile_catalogo]
-    entrada[col_Requisitos_maestro]=datos_catalogo[col_Requisitos_catalogo]
-    entrada[col_Habilidades_transversales_maestro]=datos_catalogo[col_Habilidades_catalogo]
-
-
-    return entrada
-
-
+    copiasCatalogo.push([iM, iC])
   })
 
+  console.log("data nrc:",data_nrc)
+  return secciones.map((seccion)=>{
 
+    const entrada = new Array(anchoMaestro).fill("")
+    const codigoCurso = seccion[0] // ING1101
+    entrada[cM.mandante]="SI"
+    entrada[cM.codigo]=codigoCurso
+    entrada[cM.secciones]=seccion[1] // 1
+    entrada[cM.nrc]=seccion[2] // NRC 5670
+    entrada[cM.curso]=codigoCurso.substring(3)
+    entrada[cM.materia]=codigoCurso.substring(0, 3) // ING
+    entrada[cM.llave]= codigoCurso+seccion[1] // ING11011
+
+    // Puede que no encuentre ningun dato asociado en catalogo
+    const datos_catalogo=data_catalogo.find((curso)=>curso[cC.codigo]===codigoCurso) || []
+    entrada[cM.area]=datos_catalogo[cC.area] ?? ""
+    entrada[cM.titulo]=datos_catalogo[cC.titulo] ?? ""
+
+    // Cupos del NRC espejo (referencia para la sección)
+    const datos_nrc = data_nrc.find((curso)=>curso[cN.nrc]==seccion[2]) || []
+    entrada[cM.inscritosEspejo]=datos_nrc[cN.cupos] ?? ""
+
+    copiasCatalogo.forEach(([iM, iC]) => {
+      entrada[iM] = datos_catalogo[iC] ?? ""
+    })
+
+    return entrada
+  })
 }
 function obtenerCantidadDeColumnas(hoja) {
   // Abre la hoja activa
@@ -133,17 +150,6 @@ function obtenerRangoColumnas(listaDeListas,inicio,final) {
   
   return columnasRango = listaDeListas.map(fila => fila.slice(inicio,final));
 
-}
-function extraerRango(lista, inicio, fin) {
-  if (lista===undefined){
-    return new Array(fin-inicio) 
-  }
-  return lista.slice(inicio, fin + 1); // `fin + 1` porque slice no incluye el último índice
-}
-function reemplazarParteLista(lista, inicio, fin, sublista) {
-  // Elimina desde `inicio` hasta `fin` y agrega `sublista` en su lugar.
-  lista.splice(inicio, fin - inicio + 1, ...sublista);
-  return lista;
 }
 function obtener_entradas_area_especifica(area,entradas,col_area){
 
@@ -337,9 +343,14 @@ function actualizarListaOriginal(listaOriginal, listaCambiada, columnaClave, col
   return listaActualizada;
 }
 
-function horariosPorRut(data){
-const horariosPorRut = data.reduce((acc, [fecha, nombre, rut, dia, hora]) => {
-   
+// cols = { rut, dia, hora }: índices de esas columnas en la hoja RESPUESTAS.
+function horariosPorRut(data, cols){
+const horariosPorRut = data.reduce((acc, fila) => {
+    const rut = fila[cols.rut];
+    const dia = normalizarDiaRespuesta_(fila[cols.dia]);
+    const hora = fila[cols.hora];
+    if (!rut || !dia) return acc;
+
     if (!acc[rut]) {
         acc[rut] = {
             rut,
@@ -359,6 +370,7 @@ const horariosPorRut = data.reduce((acc, [fecha, nombre, rut, dia, hora]) => {
 }, {});
 
 
+
 return Object.values(horariosPorRut).map(profesor => {
     const { rut, horarios } = profesor;
     const horariosConcatenados = Object.keys(horarios).reduce((acc, dia) => {
@@ -373,6 +385,13 @@ return Object.values(horariosPorRut).map(profesor => {
 
 
 
+}
+// Lleva el día de RESPUESTAS a la clave usada en horariosPorRut
+// (Lunes, Martes, Miércoles, Jueves, Viernes). Devuelve "" si no es día hábil.
+function normalizarDiaRespuesta_(valor) {
+  const t = normalizarEncabezado(valor);
+  const mapa = { LUNES: "Lunes", MARTES: "Martes", MIERCOLES: "Miércoles", JUEVES: "Jueves", VIERNES: "Viernes" };
+  return mapa[t] || "";
 }
 function interseccion_de_bloques(dia1,dia2){
   const lista1=dia1.split(",")
@@ -1489,12 +1508,33 @@ function procesarMultiplesHojasHomologas(sheetNames) {
     const lastCol = sheet.getLastColumn();
     if (lastRow < 3 || lastCol < 1) continue;
 
-    // desde fila 3
+    // Las columnas se identifican por su encabezado de la fila 2: cada
+    // "CODIGO" es el código de una malla y la columna siguiente (si no es
+    // otro "CODIGO") trae su nombre. La primera columna CODIGO es la malla
+    // vigente; las demás, sus equivalentes. Así una columna de ayuda
+    // agregada en la hoja no desordena las parejas código/nombre.
+    const encabezados = sheet.getRange(2, 1, 1, lastCol).getValues()[0];
+    const esCodigo = (i) => normalizarEncabezado(encabezados[i]) === "CODIGO";
+    const colsCodigo = [];
+    for (let c = 0; c < encabezados.length; c++) if (esCodigo(c)) colsCodigo.push(c);
+    if (colsCodigo.length < 2) continue;
+    const colVigente = colsCodigo[0];
+    const colsEquivalentes = colsCodigo.slice(1);
+    // Nombre: la columna "Asignatura" que sigue al CODIGO (antes del próximo
+    // CODIGO); si no tiene encabezado, la columna inmediatamente siguiente.
+    const colNombre = (c) => {
+      for (let k = c + 1; k < encabezados.length && !esCodigo(k); k++) {
+        if (normalizarEncabezado(encabezados[k]) === "ASIGNATURA") return k;
+      }
+      return (c + 1 < encabezados.length && String(encabezados[c + 1] || "").trim() === "") ? c + 1 : -1;
+    };
+
+    // datos desde la fila 3
     const datos = sheet.getRange(3, 1, lastRow - 2, lastCol).getValues();
 
     for (let r = 0; r < datos.length; r++) {
       const fila = datos[r];
-      const primaryRaw = fila[0];
+      const primaryRaw = fila[colVigente];
       if (!primaryRaw) continue;
 
       const primary = String(primaryRaw).trim();
@@ -1505,24 +1545,21 @@ function procesarMultiplesHojasHomologas(sheetNames) {
       // lista temporal de cursos nuevos encontrados en esta fila
       const nuevosCursos = [];
 
-      // recorremos pares C/D, E/F, ...
-      for (let c = 2; c < lastCol; c += 2) {
+      colsEquivalentes.forEach((c) => {
         const codeRaw = fila[c];
-        if (!codeRaw) continue;
+        if (!codeRaw) return;
 
         const code = String(codeRaw).trim();
-        if (code === primary) continue;
+        if (code === primary) return;
 
         if (!seen.has(code)) {
-          let nombre = "";
-          if (c + 1 < fila.length && fila[c + 1] != null) {
-            nombre = String(fila[c + 1]).trim();
-          }
+          const cn = colNombre(c);
+          const nombre = (cn !== -1 && fila[cn] != null) ? String(fila[cn]).trim() : "";
 
           seen.add(code);
           nuevosCursos.push([code, nombre]);
         }
-      }
+      });
 
       // solo ahora marcamos el primary como visto
       // y lo guardamos si realmente hay cursos nuevos
