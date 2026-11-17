@@ -419,8 +419,12 @@ function verificarCasillastodasVacias(lista, indices) {
 // 15 HORA INICIO · 16 HORA FIN · 17 INDICADOR SESION · 18 PROF. PRINCIPAL · 19 OTROS PROF.
 // 20 LABORATORIO · 21 CARACT. SALA P1 · 22 CARACT. SALA P2 · 23 OBSERVACIÓN · 24 METODOLOGIA
 //
-// periodos = {inicio_clases, fin_clases, inicio_ayud} en "dd/mm/aaaa"
-// (ayudantías y laboratorios terminan el mismo día que las clases)
+// periodos (fechas en "dd/mm/aaaa"):
+//   inicio_clases, fin_clases, inicio_ayud  → generales (AYUD/LAB terminan junto con las clases)
+//   inicio_clases_primer_semestre           → opcional (solo primer semestre): inicio de CLAS (y de
+//                                             LAB de cursos sin CLAS) para cursos con "1" en "Plan Común"
+//   fin_por_codigo                          → {CODIGO: fecha}: fin propio de todos los bloques de ese curso
+//                                             (ING1103 Programación, ING6103 Proyecto de Título 2)
 function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_completo,periodos){
   const col_area=obtenerNumeroDeColumna(hoja_maestro,"AREA",1)
   const col_codigo=obtenerNumeroDeColumna(hoja_maestro,"CODIGO",1)
@@ -444,6 +448,10 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
   const col_metodologia=obtenerNumeroDeColumna(hoja_maestro,"METODOLOGIA",1)
   const col_comentarios=obtenerNumeroDeColumna(hoja_maestro,"COMENTARIOS COORDINADOR",1)
   const col_observaciones=obtenerNumeroDeColumna(hoja_maestro,"OBSERVACION",1)
+  // "Plan Común" solo se necesita cuando hay fecha de inicio de primer semestre
+  const col_plan_comun=periodos.inicio_clases_primer_semestre
+    ? obtenerNumeroDeColumna(hoja_maestro,"Plan Común",1)
+    : -1
 
   const dPSA=[]
   const diasSemana = ['DOMINGO', 'LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
@@ -453,8 +461,14 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
     iniClas: dpsa_parsearFecha_(periodos.inicio_clases),
     finClas: dpsa_parsearFecha_(periodos.fin_clases),
     iniAyud: dpsa_parsearFecha_(periodos.inicio_ayud),
-    finAyud: dpsa_parsearFecha_(periodos.fin_clases)
+    finAyud: dpsa_parsearFecha_(periodos.fin_clases),
+    iniClasPrimerSemestre: dpsa_parsearFecha_(periodos.inicio_clases_primer_semestre),
+    finPorCodigo: {}
   }
+  Object.keys(periodos.fin_por_codigo||{}).forEach(cod=>{
+    const f=dpsa_parsearFecha_(periodos.fin_por_codigo[cod])
+    if(f) P.finPorCodigo[dpsa_norm_(cod)]=f
+  })
   const anioRef = P.iniClas ? P.iniClas.getFullYear() : new Date().getFullYear()
 
   // Columnas del calendario: solo las que tienen una fecha como encabezado
@@ -512,6 +526,14 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
     const tipoReunion=codigo=="ING6104"?"PRACTICA":"TEORIA"
     let pusoEntrada=false
 
+    // Fechas propias del curso:
+    // - inicio de CLAS de primer semestre si el curso tiene "1" en "Plan Común"
+    // - fin propio para todos sus bloques (ING1103, ING6103)
+    const esPrimerSemestre = !!P.iniClasPrimerSemestre && col_plan_comun>=0 &&
+      dpsa_tieneSemestre_(entrada[col_plan_comun],"1")
+    const iniClasCurso = esPrimerSemestre ? P.iniClasPrimerSemestre : P.iniClas
+    const finCurso = P.finPorCodigo[dpsa_norm_(codigo)] || null
+
     // Lista cruzada no mandante: solo la fila base
     if(noMandanteLC){
       dPSA.push(base_entrada(entrada))
@@ -558,8 +580,8 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
         // Período: clases (y laboratorios de cursos sin CLAS) usan el período de clases;
         // el resto usa el de ayudantías/laboratorios.
         const periodoClases = tipo=="CLAS" || (tipo=="LABT"&&!tieneClas)
-        const ini=periodoClases?P.iniClas:P.iniAyud
-        const fin=periodoClases?P.finClas:P.finAyud
+        const ini=periodoClases?iniClasCurso:P.iniAyud
+        const fin=finCurso || (periodoClases?P.finClas:P.finAyud)
         nueva_entrada[12]=ini?convertirFechaAString(ini):""
         nueva_entrada[13]=fin?convertirFechaAString(fin):""
 
@@ -681,6 +703,10 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
 }
 
 // ---------- helpers DPSA ----------
+// ¿La celda de semestre (ej. "1", "1, 3", "1/2") incluye el semestre indicado?
+function dpsa_tieneSemestre_(valor,semestre){
+  return String(valor==null?"":valor).split(/[^0-9A-Za-z]+/).some(t=>t.trim()===semestre)
+}
 function dpsa_norm_(v){
   return String(v==null?"":v).trim().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g,"")
 }

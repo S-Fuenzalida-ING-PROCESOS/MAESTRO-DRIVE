@@ -378,6 +378,52 @@ function pedirParametro() {
     return null; // Retorna `null` si el usuario canceló
   }
 }
+// Fechas para la hoja DPSA. Devuelve null si el usuario cancela o ingresa algo inválido.
+// - Período: si termina en 10 (primer semestre, ej. 202710) se pide además el inicio de
+//   clases de los cursos de primer semestre ("1" en la columna "Plan Común").
+// - El fin es uno solo para CLAS, AYUD y LAB.
+// - ING1103 y ING6103 tienen fin propio para todos sus bloques.
+const DPSA_CURSOS_FIN_PROPIO = [
+  { codigo: "ING1103", nombre: "Programación" },
+  { codigo: "ING6103", nombre: "Proyecto de Título 2" }
+]
+function pedirFechasDPSA_(){
+  const ui=SpreadsheetApp.getUi()
+  const formato=/^\d{1,2}\/\d{1,2}\/\d{4}$/
+  const pedir=(titulo)=>{
+    const r=pedirParametro_fechas(titulo,"dd/mm/aaaa")
+    if(r===null) return null
+    const v=String(r).trim()
+    if(!formato.test(v)){
+      ui.alert(`"${v}" no tiene formato dd/mm/aaaa. No se generó la hoja DPSA.`)
+      return null
+    }
+    return v
+  }
+
+  const periodoResp=pedirParametro_fechas("Introduce el PERÍODO de programación","Ej.: 202710 (primer semestre) o 202720")
+  if(periodoResp===null) return null
+  const periodo=String(periodoResp).trim()
+  if(!/^\d{6}$/.test(periodo)){
+    ui.alert(`"${periodo}" no es un período válido (6 dígitos, ej. 202710). No se generó la hoja DPSA.`)
+    return null
+  }
+  const esPrimerSemestre=periodo.slice(-2)==="10"
+
+  const fechas={ periodo, fin_por_codigo:{} }
+  if((fechas.inicio_clases=pedir("Introduce la fecha de INICIO de clases"))===null) return null
+  if(esPrimerSemestre){
+    if((fechas.inicio_clases_primer_semestre=pedir('Introduce la fecha de INICIO de clases de PRIMER SEMESTRE (cursos con "1" en Plan Común)'))===null) return null
+  }
+  if((fechas.inicio_ayud=pedir("Introduce la fecha de INICIO de AYUD/LAB"))===null) return null
+  if((fechas.fin_clases=pedir("Introduce la fecha de FIN de clases, ayudantías y laboratorios"))===null) return null
+  for(const c of DPSA_CURSOS_FIN_PROPIO){
+    const f=pedir(`Introduce la fecha de FIN de ${c.nombre} - ${c.codigo} (todos sus bloques)`)
+    if(f===null) return null
+    fechas.fin_por_codigo[c.codigo]=f
+  }
+  return fechas
+}
 function pedirParametro_fechas(mensaje_grande,mensaje_pequeno) {
   const ui = SpreadsheetApp.getUi();
   const respuesta = ui.prompt(mensaje_grande, mensaje_pequeno, ui.ButtonSet.OK_CANCEL);
@@ -936,22 +982,10 @@ function crear_template_dpsa(){
   const col_dias=[col_lunes,col_martes,col_miercoles,col_jueves,col_viernes]
   const dias=["Lunes","Martes","Miercoles","Jueves","Viernes"]
   const encabezado=["NRC","MATERIA","CURSO","TITULO","SECC.","LISTA CRUZADA","IDENTIFICADOR LIGA","TIPO HORARIO","PARTE PERIODO","CALIFICABLE","CUPOS TOTALES NRC","TIPO DE REUNIÓN","FECHA INICIO","FECHA FIN","DIA","HORA INICIO","HORA FIN","INDICADOR SESION LINEA/PROFESOR","PROFESOR PRINCIPAL","OTROS PROFESORES","LABORATORIO","CARACTERÍSTICA ESPECIAL SALA PRORIDAD 1","CARACTERÍSTICA ESPECIAL SALA PRORIDAD 2","OBSERVACIÓN","METODOLOGIA DE ENSEÑANZA"]
-  const fecha_inicio_clases=pedirParametro_fechas("Introduce la fecha de INICIO de clases","dd/mm/aaaa")
-  const fecha_fin_clases=pedirParametro_fechas("Introduce la fecha de FIN de clases","dd/mm/aaaa")
-  const fecha_inicio_ayud=pedirParametro_fechas("Introduce la fecha de \INICIO de AYUD/LAB","en formato dd/mm/aaaa")
+  const fechas=pedirFechasDPSA_()
+  if(!fechas) return
 
-  const fechasIngresadas=[fecha_inicio_clases,fecha_fin_clases,fecha_inicio_ayud]
-  if(fechasIngresadas.some(f=>f===null)) return
-  if(fechasIngresadas.some(f=>!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(f).trim()))){
-    SpreadsheetApp.getUi().alert("Las fechas deben tener formato dd/mm/aaaa. No se generó la hoja DPSA.")
-    return
-  }
-
-  const dPSA=rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_completo,{
-    inicio_clases:fecha_inicio_clases.trim(),
-    fin_clases:fecha_fin_clases.trim(),
-    inicio_ayud:fecha_inicio_ayud.trim()
-  })
+  const dPSA=rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_completo,fechas)
 
   dPSA.unshift(encabezado)
   const hoja_dpsa=crear_hoja_nombre("DPSA",hojasActuales)
