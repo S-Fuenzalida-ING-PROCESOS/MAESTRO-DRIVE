@@ -1,0 +1,1308 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<title>Programación de Horarios</title>
+<style>
+  :root { --brand: #667eea; --brand2: #764ba2; --ink: #333; --muted: #777; --line: #e0e0e0; --bg: #f4f5fb;
+          --conf: #FFCDD2; --conf-border: #d32f2f; --warn-border: #f0ad4e; --ok: #2e7d32; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: var(--ink); background: var(--bg); font-size: 13px; }
+  button { font-family: inherit; }
+
+  .app-header { background: linear-gradient(135deg, var(--brand) 0%, var(--brand2) 100%); color: #fff; padding: 14px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .app-header h1 { margin: 0; font-size: 20px; }
+  .app-header .meta { font-size: 12px; opacity: .9; }
+  .app-header .spacer { flex: 1; }
+  .hbtn { background: rgba(255,255,255,.18); color: #fff; border: 1px solid rgba(255,255,255,.4); padding: 7px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; text-decoration: none; font-size: 12px; }
+  .hbtn:hover { background: rgba(255,255,255,.3); }
+  .save-state { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 12px; background: rgba(255,255,255,.18); }
+  .save-state.saving { background: #ffd54f; color: #333; }
+  .save-state.error { background: #ef5350; }
+
+  .toolbar { background: #fff; padding: 10px 20px; display: flex; flex-wrap: wrap; gap: 12px 22px; align-items: center; box-shadow: 0 2px 6px rgba(0,0,0,.06); position: sticky; top: 0; z-index: 20; }
+  .seg { display: inline-flex; border: 1px solid #d5d8f0; border-radius: 7px; overflow: hidden; }
+  .seg button { border: none; background: #fff; padding: 7px 12px; cursor: pointer; font-weight: 600; color: #555; font-size: 12px; }
+  .seg button + button { border-left: 1px solid #d5d8f0; }
+  .seg button.active { background: var(--brand); color: #fff; }
+  .group-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  .group-tab { border: none; background: transparent; padding: 7px 10px; cursor: pointer; font-weight: 700; color: #999; border-bottom: 3px solid transparent; font-size: 12px; }
+  .group-tab.active { color: var(--ink); }
+  .group-tab .cnt { font-weight: 600; font-size: 11px; color: #aaa; margin-left: 3px; }
+  .filters { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .filters label.lbl { font-weight: 700; color: #555; font-size: 12px; }
+  .filters select, .filters input[type=search] { padding: 6px 8px; border: 1px solid #ccd; border-radius: 6px; font-size: 12px; }
+  .filters input[type=search] { width: 230px; }
+  .buscador { position: relative; display: inline-block; }
+  .sug { display: none; position: absolute; top: calc(100% + 4px); left: 0; z-index: 60; width: 430px; max-height: 360px; overflow-y: auto;
+    background: #fff; border: 1px solid #d5d9e6; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.15); font-size: 12px; }
+  .sug.open { display: block; }
+  .sug-item { padding: 7px 10px; cursor: pointer; border-bottom: 1px solid #f0f1f5; display: flex; gap: 8px; align-items: baseline; }
+  .sug-item:last-child { border-bottom: none; }
+  .sug-item:hover, .sug-item.sel { background: #eef0ff; }
+  .sug-item .cod { font-weight: 700; color: #3f4fb8; white-space: nowrap; }
+  .sug-item .tit { flex: 1; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sug-item .meta { color: #888; font-size: 11px; white-space: nowrap; }
+  .sug-item .pend { color: #e65100; font-weight: 600; }
+  .sug-vacio { padding: 10px; color: #999; }
+  .sem-checks { display: inline-flex; gap: 2px; flex-wrap: wrap; }
+  .sem-checks label { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; padding: 2px 4px; border-radius: 4px; background: #f3f3f8; cursor: pointer; }
+  .link-btn { background: none; border: none; color: var(--brand); cursor: pointer; font-weight: 700; font-size: 12px; padding: 0; }
+
+  .content { padding: 16px 20px 40px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 540px; gap: 18px; align-items: start; }
+  @media (max-width: 1200px) { .layout { grid-template-columns: 1fr; } .sidebar-wrap { position: static !important; max-height: none !important; } }
+  .sidebar-wrap { position: sticky; top: calc(var(--barra, 64px) + 8px); max-height: calc(100vh - var(--barra, 64px) - 16px); overflow: auto; border-radius: 10px; }
+
+  /* ── Grilla semanal ── */
+  .timetable-view { background: #fff; padding: 16px 18px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,.08); }
+  .tt-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+  .tt-head h3 { margin: 0; font-size: 17px; }
+  .tt-head .sub { color: var(--muted); font-size: 12px; }
+  .group-bar { height: 4px; border-radius: 2px; margin: 0 0 10px; }
+  .tt { display: grid; grid-template-columns: 92px repeat(5, minmax(0, 1fr)); border-left: 1px solid var(--line); border-top: 1px solid var(--line); }
+  .tt > div { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .tt-day { background: #f7f7fb; text-align: center; font-weight: 800; padding: 8px 4px; position: sticky; top: var(--barra, 64px); z-index: 4; }
+  .tt-time { font-weight: 700; font-size: 11.5px; padding: 6px; color: #555; display: flex; align-items: flex-start; justify-content: center; }
+  .cell { min-height: 62px; padding: 3px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 3px; position: relative; }
+  .cell .lock { position: absolute; right: 3px; top: 2px; font-size: 10px; opacity: .55; }
+  body.dragging .cell.dnd-ok { background: #c8f7c5 !important; box-shadow: inset 0 0 0 2px #43a047; }
+  body.dragging .cell.dnd-warn { background: #fff3c4 !important; box-shadow: inset 0 0 0 2px #f0ad4e; }
+  body.dragging .cell.dnd-no { background: #ffd6d6 !important; box-shadow: inset 0 0 0 2px #e57373; }
+  body.dragging .cell.dnd-over { box-shadow: inset 0 0 0 3px var(--brand) !important; }
+
+  .hr-tag { display: inline-flex; align-items: center; gap: 3px; padding: 2px 4px 2px 5px; border-radius: 4px; border-left: 3px solid #999; font-size: 10.5px; font-weight: 700; cursor: grab; line-height: 1.2; box-shadow: 0 1px 2px rgba(0,0,0,.1); max-width: 100%; }
+  .hr-tag .t { font-weight: 600; opacity: .8; font-size: 9.5px; }
+  .hr-tag.conflicting { background: var(--conf) !important; border-left-color: var(--conf-border) !important; color: #333 !important; }
+  .hr-tag.warning { outline: 2px dashed var(--warn-border); outline-offset: -2px; }
+  .hr-tag.pending { opacity: .5; }
+  .hr-tag.dim { opacity: .25; }
+  /* Vista con nombres (como la web app): una tarjeta por bloque */
+  body:not(.compacto) .cell { flex-direction: column; flex-wrap: nowrap; gap: 5px; padding: 5px; }
+  body:not(.compacto) .hr-tag { display: block; position: relative; width: 100%; padding: 6px 22px 6px 8px; border-left-width: 4px; border-radius: 6px; font-size: 11px; box-shadow: 0 1px 3px rgba(0,0,0,.14); }
+  body:not(.compacto) .hr-tag .h-cod { font-weight: 800; font-size: 11px; display: block; }
+  body:not(.compacto) .hr-tag .h-tit { font-weight: 500; font-size: 10.5px; display: block; line-height: 1.25; margin-top: 1px; }
+  body:not(.compacto) .hr-tag .h-tipo { font-weight: 600; font-size: 9.5px; display: block; opacity: .75; margin-top: 2px; font-style: italic; text-transform: uppercase; letter-spacing: .2px; }
+  body:not(.compacto) .hr-tag .h-conf { font-weight: 700; font-size: 9.5px; display: block; margin-top: 2px; color: #b71c1c; white-space: normal; }
+  body:not(.compacto) .hr-tag .x { position: absolute; top: 5px; right: 5px; width: 15px; height: 15px; border-radius: 50%; background: #e53935; color: #fff; font-size: 9px; line-height: 15px; padding: 0; text-align: center; }
+  body.compacto .hr-tag .h-tit, body.compacto .hr-tag .h-conf, body.compacto .hr-tag .h-tipo .extra { display: none; }
+  .toggle-vista { margin-left: auto; }
+  .hr-tag .h-acc { display: block; margin-top: 3px; text-shadow: none; }
+  body.compacto .hr-tag .h-acc { display: inline; margin: 0 0 0 2px; }
+  .hr-tag .mini-btn.sep { background: rgba(255,255,255,.85); color: #333; border: 1px solid rgba(0,0,0,.15); font-size: 9.5px; padding: 0 6px; line-height: 15px; }
+  .hr-tag .mini-btn.sep:hover { background: #fff; border-color: var(--brand); color: var(--brand); }
+  .hr-tag.hr-grupo { box-shadow: 2px 2px 0 rgba(0,0,0,.18), 4px 4px 0 rgba(0,0,0,.08); }
+  .hr-tag .x { border: none; background: rgba(0,0,0,.1); border-radius: 3px; cursor: pointer; font-size: 9px; padding: 0 3px; line-height: 13px; color: inherit; }
+  .hr-tag .x:hover { background: #ef5350; color: #fff; }
+
+  /* ── Sidebar ── */
+  .side { background: #fff; border-radius: 10px; padding: 12px; box-shadow: 0 5px 15px rgba(0,0,0,.08); }
+  .side.drop-remove { box-shadow: 0 0 0 3px #ef5350; }
+  .side-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .side-header h3 { margin: 0; font-size: 15px; }
+  .side-hint { font-size: 11px; color: var(--muted); margin-bottom: 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .sb-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+  .sb-tab { border: 1px solid #d5d8f0; background: #fff; border-radius: 14px; padding: 3px 9px; font-size: 11px; font-weight: 700; color: #555; cursor: pointer; }
+  .sb-tab.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .sb-tab .cnt { font-weight: 600; opacity: .7; }
+  .ndrop { display: inline-flex; gap: 2px; align-items: center; }
+  .ndrop button { border: 1px solid #d5d8f0; background: #fff; border-radius: 5px; font-size: 11px; font-weight: 800; padding: 1px 7px; cursor: pointer; }
+  .ndrop button.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .cols.single { grid-template-columns: 1fr; }
+  .col { background: #f7f7fb; border-radius: 8px; padding: 6px; min-width: 0; }
+  .col.revisar { background: #fff8e1; }
+  .col-title { font-weight: 800; font-size: 11px; color: #555; text-align: center; margin-bottom: 6px; text-transform: uppercase; }
+  .col-title .cnt { color: #999; font-weight: 600; }
+  .col-list { display: flex; flex-direction: column; gap: 7px; }
+  .col-list.wide { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+  .col-empty { color: #bbb; font-size: 11px; text-align: center; padding: 6px 0; }
+
+  .postit { padding: 7px; border-radius: 6px; border-left: 4px solid #999; cursor: grab; box-shadow: 0 2px 4px rgba(0,0,0,.1); transition: transform .15s, box-shadow .15s; font-size: 11px; }
+  .postit:hover { transform: translateY(-2px); box-shadow: 0 4px 9px rgba(0,0,0,.16); }
+  .postit.limit-reached { opacity: .5; cursor: not-allowed; filter: grayscale(.4); }
+  .postit.revisar { background: #fff !important; border-left-color: #f0ad4e !important; color: #333 !important; cursor: default; }
+  .p-title { font-weight: 800; font-size: 12px; display: flex; gap: 4px; align-items: baseline; flex-wrap: wrap; }
+  .p-sub { font-weight: 500; margin: 1px 0 4px; line-height: 1.2; }
+  .p-info { background: rgba(255,255,255,.72); color: #333; border-radius: 4px; padding: 3px 5px; margin: 3px 0; line-height: 1.3; font-weight: 600; font-size: 10.5px; }
+  .p-info b { font-weight: 800; }
+  .p-foot { display: flex; justify-content: space-between; align-items: center; gap: 4px; margin-top: 3px; flex-wrap: wrap; }
+  .counter { font-weight: 800; font-size: 11px; background: rgba(255,255,255,.75); color: #333; border-radius: 10px; padding: 1px 7px; }
+  .counter.full { background: #c8e6c9; color: var(--ok); }
+  .counter.over { background: var(--conf); color: var(--conf-border); }
+  .cbadges { display: flex; gap: 2px; flex-wrap: wrap; }
+  .cbadge { font-size: 9.5px; font-weight: 700; background: rgba(0,0,0,.12); border-radius: 3px; padding: 0 3px; }
+  .sbadge { font-size: 10px; font-weight: 700; background: rgba(0,0,0,.14); border-radius: 3px; padding: 0 4px; }
+  .mini-btn { border: none; background: rgba(0,0,0,.12); color: inherit; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 6px; cursor: pointer; }
+  .issue { color: #8a5300; font-weight: 600; margin-top: 3px; line-height: 1.25; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; background: #fff; padding: 10px 14px; border-radius: 10px; box-shadow: 0 3px 10px rgba(0,0,0,.06); font-size: 12px; margin-top: 14px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-color { width: 16px; height: 16px; border-radius: 3px; border: 1px solid #ccc; }
+
+  /* ── Resumen ── */
+  .resumen { background: #fff; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,.08); overflow: auto; }
+  .resumen table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  .resumen th { position: sticky; top: 0; background: #1F4E78; color: #fff; text-align: left; padding: 8px; font-weight: 700; white-space: nowrap; z-index: 1; }
+  .resumen td { border-bottom: 1px solid #eee; padding: 7px 8px; vertical-align: top; }
+  .resumen tr:hover td { background: #fafbff; }
+  .resumen-top { display: flex; gap: 18px; align-items: center; padding: 10px 14px; flex-wrap: wrap; border-bottom: 1px solid #eee; }
+  .kpi { font-size: 12px; color: #555; }
+  .kpi b { font-size: 16px; color: var(--ink); margin-right: 3px; }
+  .ok { color: var(--ok); font-weight: 800; }
+  .mal { color: #c62828; font-weight: 700; }
+  .warn { color: #8a5300; font-weight: 700; }
+  .ir { color: var(--brand); cursor: pointer; font-weight: 800; }
+  .pend-badge { display: inline-block; margin-left: 4px; background: #ff9800; color: #fff; border-radius: 9px; padding: 0 6px; font-size: 10px; font-weight: 800; }
+  .pend-btn { border: 1px solid #ffb74d; background: #fff3e0; color: #e65100; border-radius: 14px; padding: 4px 10px; font-weight: 800; font-size: 12px; cursor: pointer; }
+  .pend-btn:hover { background: #ffe0b2; }
+  .aviso-mand { background: #fff8e1; border: 1px solid #ffcc80; color: #6d4c00; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: 12px; line-height: 1.5; }
+  .resumen td.dist { font-size: 11.5px; min-width: 150px; }
+  .resumen td.dist.ok { color: var(--ok); font-weight: 700; }
+  .resumen td.dist.mal { color: #c62828; font-weight: 700; }
+  .resumen td.dist.pend { color: #8a5300; }
+  .resumen td.dist.na, .resumen td.dist.sin { color: #999; }
+  .resumen td.estado { min-width: 320px; }
+  .det-tit { margin-top: 4px; }
+  ul.det { margin: 3px 0 0; padding-left: 16px; font-size: 11.5px; }
+  ul.det li { margin-bottom: 4px; }
+  ul.det li b { color: #b71c1c; font-weight: 700; }
+  ul.det li span { color: #555; }
+  ul.det.warnl { color: #8a5300; }
+  .det-tit.jor { color: #6a1b9a; font-weight: 700; }
+  ul.det.jorl li b { color: #6a1b9a; }
+  .resumen td.estado.aceptado ul.det.jorl li b { color: #777 !important; }
+  .resumen td.revision { min-width: 120px; text-align: center; }
+  .btn-aceptar { background: #2e7d32; color: #fff; border: none; border-radius: 6px; padding: 5px 12px; font-weight: 700; cursor: pointer; font-size: 12px; }
+  .btn-aceptar:hover { background: #1b5e20; }
+  .rev-ok { color: #2e7d32; font-weight: 800; }
+  .rev-meta { color: #777; font-size: 10.5px; margin: 2px 0 4px; }
+  .mini-btn.rev { background: #eee; color: #555; }
+  .resumen td.estado.aceptado ul.det li b, .resumen td.estado.aceptado .det-tit { color: #777 !important; }
+  .resumen td.dist.acep { color: #777; }
+  .hr-tag.aceptado { outline: 2px dotted #2e7d32; outline-offset: -2px; }
+
+  .overlay { position: fixed; inset: 0; background: rgba(255,255,255,.85); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; z-index: 100; font-size: 15px; font-weight: 600; color: #555; }
+  .spinner { width: 34px; height: 34px; border: 4px solid #dfe2f6; border-top-color: var(--brand); border-radius: 50%; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-box { max-width: 640px; background: #fff; border: 2px solid #ef5350; border-radius: 10px; padding: 18px 22px; color: #b71c1c; white-space: pre-wrap; }
+  .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 9px 16px; border-radius: 8px; font-size: 13px; z-index: 120; box-shadow: 0 4px 14px rgba(0,0,0,.25); max-width: 80vw; white-space: pre-line; }
+  .toast.err { background: #c62828; }
+  .toast.warn { background: #8a5300; }
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <div>
+    <h1>🗓️ Programación de Horarios</h1>
+    <div class="meta" id="meta">Cargando MAESTRO…</div>
+  </div>
+  <div class="spacer"></div>
+  <span class="save-state" id="saveState">Sin cambios pendientes</span>
+  <button class="hbtn" id="btnReload">⟳ Recargar</button>
+  <a class="hbtn" id="lnkMaestro" href="#" target="_blank" rel="noopener">Abrir MAESTRO ↗</a>
+</div>
+
+<div class="toolbar">
+  <div class="seg" id="segVista">
+    <button data-vista="grilla" class="active">🗓️ Horario semanal</button>
+    <button data-vista="resumen">📋 Resumen por curso</button>
+  </div>
+  <div class="group-tabs" id="groupTabs"></div>
+  <div class="filters">
+    <label class="lbl" for="fEsp">Especialidad</label>
+    <select id="fEsp">
+      <option value="TODOS">Todos</option>
+      <option value="PLAN COMÚN">Plan Común</option>
+      <option>ICI</option><option>IOC</option><option>ICE</option>
+      <option>ICC</option><option>ICA</option><option>ICQ</option>
+    </select>
+    <label class="lbl">Semestre</label>
+    <span class="sem-checks" id="fSem"></span>
+    <span class="buscador"><input type="search" id="fBuscar" placeholder="🔍 Buscar código, curso o profesor…" autocomplete="off"><div class="sug" id="sugBuscar"></div></span>
+    <button class="link-btn" id="btnLimpiar" style="display:none">Limpiar filtros</button>
+    <button class="pend-btn" id="btnPend" style="display:none" title="Ver todas las secciones con horas sin programar (todas las pestañas)"></button>
+  </div>
+</div>
+
+<div class="content" id="content"></div>
+<div class="overlay" id="overlay"><div class="spinner"></div><div>Leyendo MAESTRO…</div></div>
+
+<script>
+/* ===================================================================
+ * Constantes
+ * =================================================================== */
+const GRUPOS = [
+  { id: 'plan_comun', nombre: 'Plan Común', color: '#667eea' },
+  { id: '5to_6to', nombre: '5to y 6to', color: '#764ba2' },
+  { id: '7mo_8vo', nombre: '7mo y 8vo', color: '#f093fb' },
+  { id: '9no_10_11', nombre: '9no, 10mo y 11vo', color: '#4facfe' },
+  { id: 'otros', nombre: 'Sin semestre', color: '#999' },
+  { id: 'todos', nombre: 'Todos', color: '#555' }
+];
+const PROTEGIDOS_GRUPOS = ['plan_comun', '5to_6to', '7mo_8vo'];
+const TIPOS = ['CLAS', 'AYUD', 'LABT'];
+const TIPO_NOMBRE = { CLAS: 'Clase', AYUD: 'Ayudantía', LABT: 'Lab/Taller' };
+const TIPO_CORTO = { CLAS: 'CLAS', AYUD: 'AYUD', LABT: 'LAB' };
+const DIAS = [null, 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+const DIAS_CORTO = [null, 'Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
+const COLORES_PC = { 1: '#FFEB99', 2: '#A8E6A0', 3: '#FFB3B3', 4: '#A3D5FF' };
+const COLORES_ESP = { ICI: ['#A8E6A0', '#4CAF50'], IOC: ['#A3D5FF', '#2196F3'], ICE: ['#FFD699', '#FF9800'],
+  ICC: ['#D3D3D3', '#757575'], ICA: ['#FFB3D9', '#E91E63'], ICQ: ['#D4A5D4', '#9C27B0'] };
+const FILA_COLOR = ['#c8e6c9', '#ffe8cc'];
+const PC = 'PLAN COMÚN';
+
+/* ===================================================================
+ * Estado
+ * =================================================================== */
+const S = {
+  data: null, courses: new Map(), vista: 'grilla', grupo: 'plan_comun',
+  fEsp: 'TODOS', fSem: [], fBuscar: '', sbTipo: 'todos', ocultarCompletos: false,
+  revisiones: {}, acept: new Map(), jornada: new Set(), separados: new Set(), sepGrid: new Set(), nDrop: 1, compacto: false, pend: 0, placed: [], analisis: new Map(), pendientes: new Set()
+};
+let DRAG = null;
+
+/* ===================================================================
+ * Servidor
+ * =================================================================== */
+function srv(fn, ...args) {
+  return new Promise((res, rej) => {
+    google.script.run.withSuccessHandler(res)
+      .withFailureHandler(e => rej(e && e.message ? e : new Error(String(e))))[fn](...args);
+  });
+}
+function setSaving(d, err) {
+  S.pend = Math.max(0, S.pend + d);
+  const el = document.getElementById('saveState');
+  el.classList.remove('saving', 'error');
+  if (err) { el.textContent = '⚠ Error al guardar'; el.classList.add('error'); return; }
+  if (S.pend > 0) { el.textContent = 'Guardando en MAESTRO…'; el.classList.add('saving'); }
+  else el.textContent = '✓ Guardado en MAESTRO';
+}
+function toast(msg, tipo) {
+  const t = document.createElement('div');
+  t.className = 'toast' + (tipo ? ' ' + tipo : '');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), tipo ? 7000 : 3000);
+}
+
+async function cargar() {
+  const o = document.getElementById('overlay');
+  o.style.display = 'flex'; o.innerHTML = '<div class="spinner"></div><div>Leyendo MAESTRO…</div>';
+  try {
+    const d = await srv('phrObtenerDatos');
+    S.data = d;
+    S.courses = new Map(d.courses.map(c => [c.id, c]));
+    S.revisiones = d.revisiones || {};
+    // Profesores JORNADA: hoja JORNADAS (si se configuró) + columna "JORNADA / HONORARIO" del MAESTRO
+    S.jornada = new Set((d.jornadaRuts || []).concat(d.courses.filter(c => c.jornada && c.prof1.rut).map(c => c.prof1.rut)));
+    document.getElementById('meta').textContent = `${d.fuente} · ${d.courses.length} secciones mandantes · leído ${d.cargado}`;
+    document.getElementById('lnkMaestro').href = d.url;
+    o.style.display = 'none';
+    render();
+  } catch (e) {
+    o.innerHTML = `<div class="error-box"><b>No se pudo leer el MAESTRO</b>\n\n${esc(e.message)}</div>`;
+  }
+}
+
+/* ===================================================================
+ * Utilidades
+ * =================================================================== */
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function norm(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase(); }
+function min(h) { const m = String(h || '').match(/^(\d{1,2}):(\d{2})$/); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+function hora(m) { return Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0'); }
+function bloque(b) { return S.data.bloques[b]; }
+function bloqueTxt(b) { const x = bloque(b); return x.inicio + '-' + x.fin; }
+function cohortLabel(c) { return (c.major === PC ? 'PC' : c.major) + ' ' + c.token; }
+function pk(p) { return p.courseId + '|' + p.dia + '|' + p.type + '|' + p.b; }
+function nombreCurso(c) { return c.codigo + '-' + c.seccion; }
+
+/* ===================================================================
+ * Grupos / filtros (iguales al calendario de evaluaciones)
+ * =================================================================== */
+function gruposCurso(c) {
+  const g = new Set();
+  c.cohorts.forEach(x => {
+    if (x.major === PC || x.num <= 4) g.add('plan_comun');
+    if (x.num === 5 || x.num === 6) g.add('5to_6to');
+    if (x.num === 7 || x.num === 8) g.add('7mo_8vo');
+    if (x.num >= 9 && x.num <= 11) g.add('9no_10_11');
+  });
+  if (!g.size) g.add('otros');
+  return g;
+}
+function enGrupo(c, g) { return g === 'todos' || gruposCurso(c).has(g); }
+function pasaFiltros(c) {
+  const ev = S.fEsp === 'TODOS', sv = S.fSem.length === 0;
+  if (!ev || !sv) {
+    if (!c.cohorts.some(x => (ev || x.major === S.fEsp || x.major === PC) && (sv || S.fSem.includes(x.num)))) return false;
+  }
+  if (S.fBuscar) {
+    const q = norm(S.fBuscar);
+    const hay = norm([c.codigo, c.titulo, c.prof1.nombre, c.prof2.nombre, c.labtNombre, c.area, c.seccion].join(' '));
+    if (!q.split(/\s+/).every(w => hay.includes(w))) return false;
+  }
+  return true;
+}
+function visible(c) { return c && enGrupo(c, S.grupo) && pasaFiltros(c); }
+
+function estiloCurso(c, conflicto, compacto) {
+  if (conflicto) return 'background:#FFCDD2;border-left-color:#d32f2f;color:#333';
+  const cols = [];
+  c.cohorts.forEach(x => {
+    let col;
+    if (x.major === PC || x.num <= 4) col = COLORES_PC[x.num] || '#fff9c4';
+    else { const p = COLORES_ESP[x.major]; col = p ? (x.num % 2 ? p[0] : p[1]) : '#fff9c4'; }
+    cols.push(col);
+  });
+  if (!cols.length) cols.push('#fff9c4');
+  const u = [...new Set(cols)];
+  // Una franja de color por cada carrera/semestre en que se imparte (igual que la web app).
+  const bg = u.length === 1 ? u[0] : 'linear-gradient(to right,' + u.map((cl, i) => `${cl} ${i * 100 / u.length}%, ${cl} ${(i + 1) * 100 / u.length}%`).join(',') + ')';
+  if (u.length > 1) {
+    // Multicolor: texto oscuro con halo claro para que se lea sobre cualquier franja.
+    return `background:${bg};border-left-color:${u[0]};color:#1d1d1d;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff`;
+  }
+  const hex = u[0].replace('#', '');
+  const lum = (0.299 * parseInt(hex.substr(0, 2), 16) + 0.587 * parseInt(hex.substr(2, 2), 16) + 0.114 * parseInt(hex.substr(4, 2), 16)) / 255;
+  return `background:${bg};border-left-color:${u[0]};color:${lum > 0.5 ? '#333' : '#fff'}`;
+}
+
+/* ===================================================================
+ * Reglas
+ * =================================================================== */
+function usados(c, type) { let n = 0; for (let d = 1; d <= 5; d++) n += (c.sched[d][type] || []).length; return n; }
+
+function cohorteComun(a, b) {
+  for (const x of a.cohorts) for (const y of b.cohorts) {
+    if (x.major === y.major && x.num === y.num && (!x.suf || !y.suf || x.suf === y.suf)) return cohortLabel(x.suf ? x : y);
+  }
+  return null;
+}
+function mismaLC(a, b) { return !!a.lc && a.lc === b.lc && a.seccion === b.seccion; }
+function claveSala(s) { return norm(s).replace(/\s+/g, ''); }
+function salaDe(c, type) {
+  const s = c.salas[type];
+  if (!s) return '';
+  return S.data.salasNoExclusivas.includes(claveSala(s)) ? '' : s;
+}
+
+/** Docentes que dictan ese tipo de hora (para topes de profesor). */
+function docentes(c, type) {
+  const p12 = [c.prof1.rut, c.prof2.rut].filter(Boolean);
+  if (type === 'AYUD') return [];
+  if (type === 'CLAS') return p12;
+  return c.soloLab ? p12 : c.labtRuts;   // LAB/TALLER
+}
+
+function interseccion(a, b) {
+  const out = {};
+  for (let d = 1; d <= 5; d++) {
+    const r = [];
+    (a[d] || []).forEach(x => (b[d] || []).forEach(y => {
+      const s = Math.max(x[0], y[0]), e = Math.min(x[1], y[1]);
+      if (e > s) r.push([s, e]);
+    }));
+    out[d] = r;
+  }
+  return out;
+}
+
+/**
+ * Disponibilidad que aplica a un tipo de hora del curso.
+ * { modo: 'completa'|'docente'|'comun'|'sin', disp, texto }
+ */
+function dispPara(c, type) {
+  if (type === 'AYUD') return { modo: 'completa', disp: null, texto: 'Completa (ayudantía)' };
+  if (type === 'CLAS') {
+    return c.disp ? { modo: 'docente', disp: c.disp, texto: 'Profesor principal' }
+      : { modo: 'sin', disp: null, texto: 'Sin disponibilidad informada' };
+  }
+  if (!c.soloLab) {
+    const t = c.labtRuts.length ? `Completa · se revisa tope de ${c.labtNombre || 'profesor LAB/TALLER'}` : 'Completa';
+    return { modo: 'completa', disp: null, texto: t };
+  }
+  const d1 = c.disp || (c.prof1.rut && S.data.dispPorRut[c.prof1.rut]) || null;
+  const d2 = c.prof2.rut && c.prof2.rut !== c.prof1.rut ? (S.data.dispPorRut[c.prof2.rut] || null) : null;
+  if (d1 && d2) return { modo: 'comun', disp: interseccion(d1, d2), texto: 'Común profesor 1 y 2' };
+  if (d1) return { modo: 'docente', disp: d1, texto: c.prof2.rut ? 'Profesor 1 (profesor 2 sin disponibilidad informada)' : 'Profesor principal' };
+  return { modo: 'sin', disp: null, texto: 'Sin disponibilidad informada' };
+}
+function disponible(dp, dia, b) {
+  if (!dp.disp) return true;
+  const s = min(bloque(b).inicio), e = min(bloque(b).fin);
+  return (dp.disp[dia] || []).some(iv => iv[0] <= s && iv[1] >= e);
+}
+function textoDisp(dp) {
+  if (!dp.disp) return '';
+  return [1, 2, 3, 4, 5].map(d => `${DIAS_CORTO[d]}: ${(dp.disp[d] || []).map(iv => hora(iv[0]) + '-' + hora(iv[1])).join(', ') || '—'}`).join('\n');
+}
+function protegido(c, dia, b) {
+  const lista = (S.data.protegidos[dia] || []);
+  if (!lista.includes(bloque(b).inicio)) return false;
+  const g = gruposCurso(c);
+  return PROTEGIDOS_GRUPOS.some(x => g.has(x));
+}
+
+/** Lista plana de bloques programados. */
+function calcularPlaced() {
+  const out = [];
+  S.courses.forEach(c => {
+    for (let d = 1; d <= 5; d++) TIPOS.forEach(t => (c.sched[d][t] || []).forEach(b => out.push({ courseId: c.id, dia: d, type: t, b })));
+  });
+  S.placed = out;
+  S.porSlot = {};
+  out.forEach(p => (S.porSlot[p.dia + '|' + p.b] = S.porSlot[p.dia + '|' + p.b] || []).push(p));
+}
+
+/** Conflictos de un bloque (real o hipotético) contra los ya programados. */
+function evaluarBloque(c, type, dia, b, ignorarKey) {
+  const conf = [], warn = [];
+  const dp = dispPara(c, type);
+  if (!disponible(dp, dia, b)) {
+    const hoy = (dp.disp[dia] || []).map(iv => hora(iv[0]) + '-' + hora(iv[1])).join(', ');
+    conf.push(`Fuera de disponibilidad (${dp.texto}; ${DIAS_CORTO[dia]} disponible: ${hoy || 'sin disponibilidad'})`);
+  }
+  if (protegido(c, dia, b)) warn.push('Horario protegido');
+  const misDoc = docentes(c, type);
+  const miSala = salaDe(c, type);
+  (S.porSlot[dia + '|' + b] || []).forEach(q => {
+    if (ignorarKey && (ignorarKey instanceof Set ? ignorarKey.has(pk(q)) : pk(q) === ignorarKey)) return;
+    if (q.courseId === c.id) {
+      if (q.type !== type) conf.push(`Se superpone con su propia ${TIPO_NOMBRE[q.type].toLowerCase()}`);
+      return;
+    }
+    const o = S.courses.get(q.courseId);
+    if (!o) return;
+    if (mismaLC(c, o)) return;
+    if (o.codigo !== c.codigo) {
+      const coh = cohorteComun(c, o);
+      if (coh) conf.push(`Tope con ${nombreCurso(o)} ${o.titulo} (${TIPO_CORTO[q.type]}, ${coh})`);
+    }
+    const docComun = misDoc.find(r => docentes(o, q.type).includes(r));
+    if (docComun) {
+      const n = [c.prof1, c.prof2].find(p => p.rut === docComun);
+      conf.push(`Profesor ${n && n.nombre ? n.nombre : (docComun === c.labtRuts[0] && c.labtNombre ? c.labtNombre : docComun)} también en ${nombreCurso(o)} ${o.titulo} (${TIPO_CORTO[q.type]})`);
+    }
+    const os = salaDe(o, q.type);
+    if (miSala && os && claveSala(miSala) === claveSala(os) && !(type === 'AYUD' && q.type === 'AYUD' && o.codigo === c.codigo)) {
+      conf.push(`Sala ${miSala} ocupada por ${nombreCurso(o)} ${o.titulo} (${TIPO_CORTO[q.type]})`);
+    }
+  });
+  return { conf: [...new Set(conf)], warn };
+}
+
+function analizar() {
+  calcularPlaced();
+  const res = new Map();
+  S.placed.forEach(p => {
+    const c = S.courses.get(p.courseId);
+    res.set(pk(p), evaluarBloque(c, p.type, p.dia, p.b, pk(p)));
+  });
+  S.analisis = res;
+}
+
+/**
+ * Valida la columna "2+1 o 3? (distribución horario de clases)".
+ * { estado: 'na'|'sin'|'pend'|'ok'|'mal', texto, nota }
+ *   3-juntas       → los 3 bloques de CLAS el mismo día y seguidos
+ *                    (ideal 10:30-13:20 o 12:30-15:20)
+ *   2+1-separadas  → 2 bloques seguidos un día + 1 bloque otro día
+ *                    (ideal: el bloque suelto 12:30-13:20)
+ */
+function validarDistribucion(c) {
+  const regla = norm(c.distribucion);
+  if (!regla) return { estado: 'sin', texto: '—', nota: '' };
+  const es3 = regla.includes('3-JUNTAS') || regla === '3';
+  const es21 = regla.includes('2+1');
+  if (!es3 && !es21) return { estado: 'na', texto: `${c.distribucion}: valor no reconocido`, nota: '' };
+  if (c.req.CLAS !== 3) return { estado: 'na', texto: `No aplica (CLAS a programar: ${c.req.CLAS})`, nota: '' };
+
+  const porDia = [];
+  for (let d = 1; d <= 5; d++) { const bl = c.sched[d].CLAS || []; if (bl.length) porDia.push({ d, bl }); }
+  const total = porDia.reduce((a, x) => a + x.bl.length, 0);
+  const seguidos = bl => bl.every((x, i) => i === 0 || x === bl[i - 1] + 1);
+  const actual = porDia.map(x => `${DIAS_CORTO[x.d]} ${x.bl.length}${x.bl.length > 1 && !seguidos(x.bl) ? ' (no seguidos)' : ''} [${rangos(x.bl)}]`).join(' + ') || 'sin CLAS';
+  if (total < 3) return { estado: 'pend', texto: `Pendiente: ${total}/3 bloques de CLAS (${actual})`, nota: '' };
+  if (total > 3) return { estado: 'mal', texto: `Hay ${total} bloques de CLAS; se esperan 3. Actual: ${actual}`, nota: '' };
+
+  if (es3) {
+    const ok = porDia.length === 1 && seguidos(porDia[0].bl);
+    if (!ok) return { estado: 'mal', texto: `Se pidió 3-juntas, pero está: ${actual}`, nota: '' };
+    const ini = bloque(porDia[0].bl[0]).inicio;
+    const ideal = ini === '10:30' || ini === '12:30';
+    return { estado: 'ok', texto: `3-juntas ✔ (${actual})`, nota: ideal ? '' : 'No está en horario ideal (10:30-13:20 o 12:30-15:20). ' + dispIdeal(c, ['10:30', '12:30'], 3) };
+  }
+  const n = porDia.map(x => x.bl.length).sort();
+  const ok = porDia.length === 2 && n[0] === 1 && n[1] === 2 && porDia.every(x => seguidos(x.bl));
+  if (!ok) return { estado: 'mal', texto: `Se pidió 2+1-separadas, pero está: ${actual}`, nota: '' };
+  const suelto = porDia.find(x => x.bl.length === 1);
+  const ideal = bloque(suelto.bl[0]).inicio === '12:30';
+  return { estado: 'ok', texto: `2+1-separadas ✔ (${actual})`, nota: ideal ? '' : 'El bloque suelto no está en el horario ideal (12:30-13:20). ' + dispIdeal(c, ['12:30'], 1) };
+}
+/** ¿El profesor entregó disponibilidad para el bloque ideal? Lista los días en que sí. */
+function dispIdeal(c, inicios, largo) {
+  const dp = dispPara(c, 'CLAS');
+  if (!dp.disp) return 'El profesor no informó disponibilidad.';
+  const si = [];
+  for (let d = 1; d <= 5; d++) inicios.forEach(ini => {
+    const b0 = S.data.bloques.findIndex(x => x.inicio === ini);
+    if (b0 < 0 || b0 + largo - 1 >= S.data.bloques.length) return;
+    let ok = true;
+    for (let k = 0; k < largo; k++) if (!disponible(dp, d, b0 + k)) ok = false;
+    if (ok) si.push(`${DIAS_CORTO[d]} ${bloque(b0).inicio}-${bloque(b0 + largo - 1).fin}`);
+  });
+  return si.length ? `El profesor SÍ entregó disponibilidad para el horario ideal: ${si.join(', ')}.`
+    : 'El profesor NO entregó disponibilidad en el horario ideal.';
+}
+
+function rangos(bl) {
+  const out = []; let i0 = null, prev = null;
+  [...bl].sort((a, b) => a - b).concat([null]).forEach(b => {
+    if (b !== null && prev !== null && b === prev + 1) { prev = b; return; }
+    if (i0 !== null) out.push(`${bloque(i0).inicio}-${bloque(prev).fin}`);
+    i0 = b; prev = b;
+  });
+  return out.join(', ');
+}
+
+function fmtSlots(ps) {
+  const g = {};
+  ps.forEach(p => { const k = p.dia + '|' + p.type; (g[k] = g[k] || []).push(p.b); });
+  return Object.keys(g).sort().map(k => { const [d, t] = k.split('|'); return `${DIAS_CORTO[d]} ${rangos(g[k])} (${TIPO_CORTO[t]})`; }).join('; ');
+}
+function nombreDocente(c, rut) {
+  if (rut === c.prof1.rut && c.prof1.nombre) return c.prof1.nombre;
+  if (rut === c.prof2.rut && c.prof2.nombre) return c.prof2.nombre;
+  if (c.labtRuts.includes(rut) && c.labtNombre) return c.labtNombre;
+  if (rut === 'SIN_RUT') return 'principal (sin RUT en MAESTRO)';
+  return rut;
+}
+/**
+ * Profesores JORNADA programados en franjas no ideales (8:30-10:20, 17:30-19:20 y
+ * viernes 10:30-12:20). Solo informa si NO se cumple la restricción.
+ */
+function detalleJornada(c) {
+  if (!S.jornada.size && !c.jornada) return [];
+  const franjas = S.data.jornadaFranjas || [];
+  const porMsg = new Map();
+  S.placed.filter(p => p.courseId === c.id).forEach(p => {
+    const ruts = docentes(c, p.type).filter(r => S.jornada.has(r));
+    // Fila marcada JORNADA pero sin RUT PROFESOR 1: se aplica igual al profesor principal.
+    if (c.jornada && !c.prof1.rut && (p.type === 'CLAS' || (p.type === 'LABT' && c.soloLab))) ruts.push('SIN_RUT');
+    if (!ruts.length) return;
+    const bi = min(bloque(p.b).inicio), bf = min(bloque(p.b).fin);
+    franjas.forEach(fr => {
+      if (!fr.dias.includes(p.dia)) return;
+      if (!(bi >= min(fr.desde) && bf <= min(fr.hasta))) return;
+      ruts.forEach(r => {
+        const m = `Profesor JORNADA ${nombreDocente(c, r)} en franja no ideal ${fr.desde}-${fr.hasta}${fr.dias.length === 1 ? ' (' + DIAS[fr.dias[0]].toLowerCase() + ')' : ''}`;
+        if (!porMsg.has(m)) porMsg.set(m, []);
+        porMsg.get(m).push(p);
+      });
+    });
+  });
+  return [...porMsg.entries()].map(([msg, ps]) => ({ msg, donde: fmtSlots(ps), n: ps.length }));
+}
+
+/** Detalle completo de topes/avisos de un curso: cada motivo con sus días y horas. */
+function detalleConflictos(c) {
+  const porMsg = { conf: new Map(), warn: new Map() };
+  S.placed.filter(p => p.courseId === c.id).forEach(p => {
+    const a = S.analisis.get(pk(p)); if (!a) return;
+    [['conf', a.conf], ['warn', a.warn]].forEach(([k, lista]) => lista.forEach(m => {
+      if (!porMsg[k].has(m)) porMsg[k].set(m, []);
+      porMsg[k].get(m).push(p);
+    }));
+  });
+  const fmt = ps => {
+    const g = {};
+    ps.forEach(p => { const k = p.dia + '|' + p.type; (g[k] = g[k] || []).push(p.b); });
+    return Object.keys(g).sort().map(k => { const [d, t] = k.split('|'); return `${DIAS_CORTO[d]} ${rangos(g[k])} (${TIPO_CORTO[t]})`; }).join('; ');
+  };
+  return {
+    conf: [...porMsg.conf.entries()].map(([m, ps]) => ({ msg: m, donde: fmt(ps), n: ps.length })),
+    warn: [...porMsg.warn.entries()].map(([m, ps]) => ({ msg: m, donde: fmt(ps), n: ps.length }))
+  };
+}
+
+/* ===================================================================
+ * Sidebar
+ * =================================================================== */
+function itemsSidebar() {
+  const cols = { CLAS: [], AYUD: [], LABT: [], REVISAR: [] };
+  const vis = [...S.courses.values()].filter(visible)
+    .sort((a, b) => a.codigo.localeCompare(b.codigo) || a.seccion.localeCompare(b.seccion, undefined, { numeric: true }));
+  const crudos = { CLAS: [], AYUD: [], LABT: [] };
+  vis.forEach(c => {
+    TIPOS.forEach(t => { if (c.req[t] > 0) crudos[t].push(c); });
+    if (c.issues.length) cols.REVISAR.push({ key: c.id + '|REV', col: 'REVISAR', cursos: [c] });
+  });
+  TIPOS.forEach(t => {
+    const porCod = {};
+    crudos[t].forEach(c => (porCod[c.codigo] = porCod[c.codigo] || []).push(c));
+    Object.entries(porCod).forEach(([cod, secs]) => {
+      const gk = cod + '|' + t;
+      // Igual que la web app: las ayudantías de un mismo código se agrupan.
+      if (t === 'AYUD' && secs.length > 1 && !S.separados.has(gk) && secs.every(s => s.req.AYUD === secs[0].req.AYUD)) {
+        cols[t].push({ key: 'g|' + gk, col: t, cursos: secs, grupo: true, gk });
+      } else secs.forEach(s => cols[t].push({ key: s.id + '|' + t, col: t, cursos: [s], grupo: false, gk, separable: S.separados.has(gk) }));
+    });
+  });
+  return cols;
+}
+function infoItem(it) {
+  const c = it.cursos[0];
+  const us = it.cursos.map(x => usados(x, it.col));
+  const hecho = Math.min(...us), max = c.req[it.col];
+  return { hecho, max, limite: hecho >= max, over: Math.max(...us) > max };
+}
+
+function renderPostit(it) {
+  const c = it.cursos[0];
+  const titulo = it.grupo ? `${esc(c.codigo)} <span class="sbadge">Secc. ${esc(it.cursos.map(x => x.seccion).join(', '))}</span>` : esc(nombreCurso(c));
+  const coh = `<div class="cbadges">${c.cohorts.map(x => `<span class="cbadge">${esc(cohortLabel(x))}</span>`).join('')}</div>`;
+  const prof = [c.prof1.nombre, c.prof2.nombre].filter(Boolean).join(' / ');
+  if (it.col === 'REVISAR') {
+    return `<div class="postit revisar"><div class="p-title">${titulo}</div><div class="p-sub">${esc(c.titulo)}</div>
+      ${c.issues.map(i => `<div class="issue">⚠ ${esc(i)}</div>`).join('')}</div>`;
+  }
+  const info = infoItem(it);
+  const dp = dispPara(c, it.col);
+  const sala = c.salas[it.col];
+  const dist = it.col === 'CLAS' && c.distribucion ? `<br>Distribución: <b>${esc(c.distribucion)}</b>` : '';
+  const quien = it.col === 'LABT' && !c.soloLab && c.labtNombre ? `<br>Prof. LAB: <b>${esc(c.labtNombre)}</b>` : '';
+  const tip = `${nombreCurso(c)} ${c.titulo}\nProfesor: ${prof || '—'}\nDisponibilidad: ${dp.texto}\n${textoDisp(dp)}`;
+  return `<div class="postit ${info.limite ? 'limit-reached' : ''}" draggable="${info.limite ? 'false' : 'true'}" data-item="${esc(it.key)}"
+      style="${estiloCurso(c, false)}" title="${esc((info.limite ? `Completo (${info.hecho}/${info.max})\n\n` : '') + tip)}">
+    <div class="p-title">${titulo}</div>
+    <div class="p-sub">${esc(c.titulo)}</div>
+    <div class="p-info">Disp.: <b>${esc(dp.texto)}</b>${dist}${quien}${sala ? `<br>🏫 ${esc(sala)}` : ''}</div>
+    <div class="p-foot"><span class="counter ${info.over ? 'over' : info.limite ? 'full' : ''}">${info.hecho}/${info.max} bloques</span>${coh}
+      ${it.grupo ? `<button class="mini-btn" data-separar="${esc(it.gk)}">Separar</button>` : it.separable ? `<button class="mini-btn" data-unir="${esc(it.gk)}">Unir</button>` : ''}</div>
+  </div>`;
+}
+
+function renderSidebar() {
+  const cols = itemsSidebar();
+  if (S.ocultarCompletos) TIPOS.forEach(t => cols[t] = cols[t].filter(it => !infoItem(it).limite));
+  S._items = new Map();
+  Object.values(cols).forEach(l => l.forEach(it => S._items.set(it.key, it)));
+  const meta = [{ id: 'todos', n: 'Todos' }, { id: 'CLAS', n: 'Clase' }, { id: 'AYUD', n: 'Ayudantía' }, { id: 'LABT', n: 'Lab/Taller' }, { id: 'REVISAR', n: '⚠ Revisar' }];
+  const tabs = meta.map(m => {
+    const n = m.id === 'todos' ? Object.values(cols).reduce((a, l) => a + l.length, 0) : cols[m.id].length;
+    return `<button class="sb-tab ${S.sbTipo === m.id ? 'active' : ''}" data-sbtipo="${m.id}">${m.n} <span class="cnt">${n}</span></button>`;
+  }).join('');
+  const mostrar = S.sbTipo === 'todos' ? ['CLAS', 'AYUD', 'LABT', 'REVISAR'] : [S.sbTipo];
+  const col = id => `<div class="col ${id === 'REVISAR' ? 'revisar' : ''}">
+      <div class="col-title">${meta.find(m => m.id === id).n} <span class="cnt">(${cols[id].length})</span></div>
+      <div class="col-list ${S.sbTipo !== 'todos' ? 'wide' : ''}">${cols[id].length ? cols[id].map(renderPostit).join('') : '<div class="col-empty">—</div>'}</div></div>`;
+  return `<aside class="side" id="sidebar">
+    <div class="side-header"><h3>Horas programables</h3><span class="kpi">${GRUPOS.find(g => g.id === S.grupo).nombre}</span></div>
+    <div class="sb-tabs">${tabs}</div>
+    <div class="side-hint">
+      <span class="ndrop">Al soltar agregar: ${[1, 2, 3].map(n => `<button data-ndrop="${n}" class="${S.nDrop === n ? 'active' : ''}">${n}</button>`).join('')} bloque(s) seguidos</span>
+      <label><input type="checkbox" id="chkCompletos" ${S.ocultarCompletos ? 'checked' : ''}> Ocultar completos</label>
+      <span>Para quitar un bloque, arrástralo aquí o usa ✕.</span>
+    </div>
+    <div class="cols ${S.sbTipo !== 'todos' ? 'single' : ''}">${mostrar.map(col).join('')}</div>
+  </aside>`;
+}
+
+/* ===================================================================
+ * Grilla
+ * =================================================================== */
+function renderGrilla() {
+  const g = GRUPOS.find(x => x.id === S.grupo);
+  let html = '<div class="tt-day" style="background:#eef0fb">Bloque</div>' + [1, 2, 3, 4, 5].map(d => `<div class="tt-day">${DIAS[d]}</div>`).join('');
+  S.data.bloques.forEach((bl, b) => {
+    const pivote = bl.inicio === S.data.pivote;
+    const iPiv = S.data.bloques.findIndex(x => x.inicio === S.data.pivote);
+    // Verde/naranjo alternados; después del bloque pivote (12:30) se vuelve a partir en verde.
+    const bg = pivote ? '#e8d5f5' : FILA_COLOR[(iPiv >= 0 && b > iPiv ? b - iPiv - 1 : b) % 2];
+    html += `<div class="tt-time" style="background:${bg}">${bl.inicio} - ${bl.fin}</div>`;
+    for (let d = 1; d <= 5; d++) {
+      const prot = PROTEGIDOS_GRUPOS.includes(S.grupo) && (S.data.protegidos[d] || []).includes(bl.inicio);
+      const tags = (S.porSlot[d + '|' + b] || []).filter(p => visible(S.courses.get(p.courseId)));
+      tags.sort((x, y) => x.type.localeCompare(y.type) || S.courses.get(x.courseId).codigo.localeCompare(S.courses.get(y.courseId).codigo));
+      html += `<div class="cell" data-dia="${d}" data-b="${b}" style="background:${bg}33">
+        ${prot ? '<span class="lock" title="Horario protegido">🔒</span>' : ''}${renderCelda(tags)}</div>`;
+    }
+  });
+  return `<div class="timetable-view">
+    <div class="tt-head"><h3>${esc(g.nombre)}</h3><span class="sub">Bloques de 50 min · ${S.placed.filter(p => visible(S.courses.get(p.courseId))).length} bloques programados en esta vista</span>
+      <div class="seg toggle-vista"><button data-compacto="0" class="${S.compacto ? '' : 'active'}">Con nombres</button><button data-compacto="1" class="${S.compacto ? 'active' : ''}">Compacta</button></div></div>
+    <div class="group-bar" style="background:${g.color}"></div>
+    <div class="tt">${html}</div>
+  </div>`;
+}
+
+/**
+ * Secciones de un mismo curso y tipo en el mismo bloque se muestran juntas
+ * ("ING1107-1,2,3"). Botón Separar/Juntar por curso y tipo.
+ */
+function claveJunta(p) { return S.courses.get(p.courseId).codigo + '|' + p.type; }
+function renderCelda(tags) {
+  const grupos = new Map();
+  tags.forEach(p => { const k = claveJunta(p); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(p); });
+  let out = '';
+  grupos.forEach((ps, k) => {
+    ps.sort((x, y) => S.courses.get(x.courseId).seccion.localeCompare(S.courses.get(y.courseId).seccion, undefined, { numeric: true }));
+    if (ps.length > 1 && !S.sepGrid.has(k)) out += renderTagGrupo(ps, k);
+    else out += ps.map((p, i) => renderTag(p, ps.length > 1 && i === 0 ? k : null)).join('');
+  });
+  return out;
+}
+
+function renderTagGrupo(ps, k) {
+  const c0 = S.courses.get(ps[0].courseId);
+  const keys = ps.map(pk);
+  const confs = [], warns = [];
+  ps.forEach(p => {
+    const a = S.analisis.get(pk(p)) || { conf: [], warn: [] };
+    const sec = S.courses.get(p.courseId).seccion;
+    if (aceptado(S.courses.get(p.courseId))) return;
+    a.conf.forEach(x => confs.push(`Secc. ${sec}: ${x}`));
+    a.warn.forEach(x => warns.push(`Secc. ${sec}: ${x}`));
+  });
+  const conf = confs.length > 0;
+  const pend = keys.some(x => S.pendientes.has(x));
+  const secs = ps.map(p => S.courses.get(p.courseId).seccion).join(',');
+  const p = ps[0];
+  const tip = [`${c0.codigo}-${secs} ${c0.titulo}`, `${TIPO_NOMBRE[p.type]} · ${DIAS[p.dia]} ${bloqueTxt(p.b)} · ${ps.length} secciones juntas`,
+    `Semestres: ${c0.cohorts.map(cohortLabel).join(', ') || '—'}`, ...confs.map(x => '⛔ ' + x), ...warns.map(x => '🔒 ' + x),
+    '', 'Arrastra para mover todas las secciones · "Separar" para moverlas por separado'].join('\n');
+  return `<div class="hr-tag hr-grupo ${conf ? 'conflicting' : ''} ${!conf && warns.length ? 'warning' : ''} ${pend ? 'pending' : ''}"
+      draggable="${pend ? 'false' : 'true'}" data-g="${esc(keys.join(';'))}" style="${estiloCurso(c0, conf, true)}" title="${esc(tip)}">
+    <span class="h-cod">${esc(c0.codigo)}-${esc(secs)}${conf ? ' ⛔' : ''}</span>
+    <span class="h-tit">${esc(c0.titulo)}</span>
+    <span class="h-tipo t">${S.compacto ? TIPO_CORTO[p.type] : TIPO_NOMBRE[p.type]}<span class="extra"> · ${ps.length} secciones</span></span>
+    ${conf ? `<span class="h-conf">${esc(confs[0])}${confs.length > 1 ? ` (+${confs.length - 1})` : ''}</span>` : ''}
+    ${pend ? '' : `<span class="h-acc"><button class="mini-btn sep" data-sepgrid="${esc(k)}" title="Mostrar cada sección por separado">Separar</button></span>
+    <button class="x" data-quitarg="${esc(keys.join(';'))}" title="Quitar este bloque de todas las secciones">✕</button>`}
+  </div>`;
+}
+
+function renderTag(p, claveJuntar) {
+  const c = S.courses.get(p.courseId);
+  const a = S.analisis.get(pk(p)) || { conf: [], warn: [] };
+  const acep = a.conf.length > 0 && aceptado(c);
+  const conf = a.conf.length > 0 && !acep;
+  const pend = S.pendientes.has(pk(p));
+  const tip = [`${nombreCurso(c)} ${c.titulo}`, `${TIPO_NOMBRE[p.type]} · ${DIAS[p.dia]} ${bloqueTxt(p.b)}`,
+    `Semestres: ${c.cohorts.map(cohortLabel).join(', ') || '—'}`, ...a.conf.map(x => '⛔ ' + x), ...a.warn.map(x => '🔒 ' + x)].join('\n');
+  return `<div class="hr-tag ${conf ? 'conflicting' : ''} ${acep ? 'aceptado' : ''} ${!conf && !acep && a.warn.length ? 'warning' : ''} ${pend ? 'pending' : ''}"
+      draggable="${pend ? 'false' : 'true'}" data-p="${esc(pk(p))}" style="${estiloCurso(c, conf, true)}" title="${esc(tip)}">
+    <span class="h-cod">${esc(nombreCurso(c))}${conf ? ' ⛔' : ''}</span>
+    <span class="h-tit">${esc(c.titulo)}</span>
+    <span class="h-tipo t">${S.compacto ? TIPO_CORTO[p.type] : TIPO_NOMBRE[p.type]}<span class="extra">${p.type === 'CLAS' && c.distribucion ? ' · ' + esc(c.distribucion) : ''}${salaDe(c, p.type) ? ' · 🏫 ' + esc(salaDe(c, p.type)) : ''}</span></span>
+    ${conf ? `<span class="h-conf">${esc(a.conf[0])}${a.conf.length > 1 ? ` (+${a.conf.length - 1})` : ''}</span>` : ''}
+    ${acep ? '<span class="h-conf" style="color:#2e7d32">✔ Aviso aceptado</span>' : ''}
+    ${claveJuntar ? `<span class="h-acc"><button class="mini-btn sep" data-juntgrid="${esc(claveJuntar)}" title="Volver a juntar las secciones de este curso">Juntar</button></span>` : ''}
+    ${pend ? '' : `<button class="x" data-quitar="${esc(pk(p))}" title="Quitar bloque">✕</button>`}
+  </div>`;
+}
+
+function tienePendientes(c) { return TIPOS.some(t => usados(c, t) < c.req[t]); }
+
+/** Filas con código y horas que no se muestran porque CURSO MANDANTE está vacío. */
+function avisoSinMandante() {
+  const l = (S.data && S.data.sinMandante) || [];
+  if (!l.length || S.ocultarAvisoMand) return '';
+  return `<div class="aviso-mand">⚠ <b>${l.length} fila(s) del MAESTRO con código y horas, pero sin CURSO MANDANTE = SI</b> (no se muestran ni se programan):
+    ${l.slice(0, 12).map(x => `${esc(x.codigo)}-${esc(x.seccion)} ${esc(x.titulo)} (fila ${x.fila})`).join(' · ')}${l.length > 12 ? ` · y ${l.length - 12} más` : ''}
+    <button class="link-btn" data-cerrarmand style="margin-left:8px">Ocultar</button></div>`;
+}
+
+function renderLeyenda() {
+  return `<div class="legend">
+    <div class="legend-item"><div class="legend-color" style="background:#FFCDD2;border-color:#d32f2f"></div>⛔ Tope: mismo semestre, profesor, sala especial o fuera de disponibilidad</div>
+    <div class="legend-item"><div class="legend-color" style="outline:2px dashed #f0ad4e;outline-offset:-2px"></div>🔒 Horario protegido</div>
+    <div class="legend-item">Al arrastrar: <span style="background:#c8f7c5;padding:0 5px;border-radius:3px">disponible</span>
+      <span style="background:#fff3c4;padding:0 5px;border-radius:3px">genera tope/aviso</span>
+      <span style="background:#ffd6d6;padding:0 5px;border-radius:3px">fuera de disponibilidad</span></div>
+    <div class="legend-item" style="color:#999">"Sala con enchufe individual" no se revisa (hay más de una).</div>
+  </div>`;
+}
+
+/* ===================================================================
+ * Resumen
+ * =================================================================== */
+/* ---------- Revisión: aceptar avisos ---------- */
+function claveRev(c) { return c.codigo + '|' + c.seccion; }
+function hashTxt(t) { let h = 5381; for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+/** Avisos que se pueden aceptar: topes, distribución y horario protegido (no las horas que faltan o sobran). */
+function avisosRevisables(c) {
+  const det = detalleConflictos(c), dist = validarDistribucion(c);
+  const out = [];
+  det.conf.forEach(x => out.push(`⛔ ${x.msg}: ${x.donde}`));
+  if (dist.estado === 'mal') out.push('Distribución: ' + dist.texto);
+  if (dist.nota) out.push('Distribución: ' + dist.nota);
+  det.warn.forEach(x => out.push(`🔒 ${x.msg}: ${x.donde}`));
+  detalleJornada(c).forEach(x => out.push(`👤 ${x.msg}: ${x.donde}`));
+  return out;
+}
+function firmaCurso(c, avisos) {
+  return hashTxt(JSON.stringify([c.sched, avisos || avisosRevisables(c)]));
+}
+/** Calcula qué cursos tienen sus avisos aceptados y programa la limpieza de aceptaciones vencidas. */
+function calcularAceptaciones() {
+  S.acept = new Map();
+  const vencidas = [];
+  S.courses.forEach(c => {
+    const r = S.revisiones[claveRev(c)];
+    if (!r) return;
+    const av = avisosRevisables(c);
+    if (av.length && r.firma === firmaCurso(c, av)) S.acept.set(c.id, r);
+    else vencidas.push(claveRev(c));
+  });
+  if (vencidas.length) {
+    clearTimeout(S._tLimpia);
+    S._tLimpia = setTimeout(() => {
+      if (S.pend > 0) return;
+      const siguen = vencidas.filter(k => { const c = [...S.courses.values()].find(x => claveRev(x) === k); return c && S.revisiones[k] && !S.acept.has(c.id); });
+      if (!siguen.length) return;
+      siguen.forEach(k => delete S.revisiones[k]);
+      srv('phrLimpiarRevisiones', siguen).catch(() => {});
+      render();
+    }, 1500);
+  }
+}
+function aceptado(c) { return S.acept.has(c.id); }
+
+async function aceptarRevision(id) {
+  const c = S.courses.get(id); if (!c) return;
+  const av = avisosRevisables(c);
+  if (!av.length) return;
+  const datos = { firma: firmaCurso(c, av), avisos: av };
+  S.revisiones[claveRev(c)] = Object.assign({ fecha: 'guardando…', usuario: '' }, datos);
+  render();
+  try { S.revisiones[claveRev(c)] = await srv('phrGuardarRevision', claveRev(c), datos); }
+  catch (e) { delete S.revisiones[claveRev(c)]; toast('No se pudo guardar la revisión: ' + e.message, 'err'); }
+  render();
+}
+async function deshacerRevision(id) {
+  const c = S.courses.get(id); if (!c) return;
+  const antes = S.revisiones[claveRev(c)];
+  delete S.revisiones[claveRev(c)];
+  render();
+  try { await srv('phrGuardarRevision', claveRev(c), null); }
+  catch (e) { S.revisiones[claveRev(c)] = antes; toast('No se pudo deshacer: ' + e.message, 'err'); render(); }
+}
+
+function estadoCurso(c) {
+  const err = [], av = [];
+  TIPOS.forEach(t => {
+    const u = usados(c, t), r = c.req[t];
+    if (u < r) err.push(`Faltan ${r - u} bloque(s) de ${TIPO_CORTO[t]}`);
+    if (u > r) err.push(`Sobran ${u - r} bloque(s) de ${TIPO_CORTO[t]}`);
+  });
+  const det = detalleConflictos(c);
+  const dist = validarDistribucion(c);
+  const acep = aceptado(c);
+  const revisables = avisosRevisables(c);
+  const jor = detalleJornada(c);
+  c.issues.forEach(i => av.push(i));
+  // Error = faltan/sobran bloques, o topes / distribución incorrecta / alerta JORNADA NO aceptados.
+  const hayError = err.length > 0 || (!acep && (det.conf.length > 0 || dist.estado === 'mal' || jor.length > 0));
+  return { err, av, det, dist, acep, revisables, hayError, jor };
+}
+function renderRevision(c, e) {
+  if (e.acep) {
+    const r = S.acept.get(c.id);
+    return `<div class="rev-ok">✔ Aceptado</div><div class="rev-meta">${esc(r.fecha || '')}${r.usuario ? '<br>' + esc(r.usuario) : ''}</div>
+      <button class="mini-btn rev" data-deshacer="${esc(c.id)}">Deshacer</button>`;
+  }
+  if (!e.revisables.length) return '<span style="color:#bbb">—</span>';
+  return `<button class="btn-aceptar" data-aceptar="${esc(c.id)}" title="${esc('Se aceptarán:\n' + e.revisables.join('\n') + '\n\nSi el horario o los avisos cambian, la aceptación se anula.')}">Aceptar</button>`;
+}
+
+function renderResumen() {
+  const cursos = [...S.courses.values()].filter(visible)
+    .sort((a, b) => a.codigo.localeCompare(b.codigo) || a.seccion.localeCompare(b.seccion, undefined, { numeric: true }));
+  let ok = 0, mal = 0, nAcep = 0;
+  const filas = cursos.map(c => {
+    const e = estadoCurso(c);
+    if (e.hayError) mal++; else ok++;
+    if (e.acep) nAcep++;
+    const horario = [1, 2, 3, 4, 5].map(d => {
+      const partes = [];
+      TIPOS.forEach(t => {
+        const bl = c.sched[d][t] || []; let i0 = null, prev = null;
+        bl.concat([null]).forEach(b => {
+          if (b !== null && prev !== null && b === prev + 1) { prev = b; return; }
+          if (i0 !== null) partes.push({ s: i0, t: `${TIPO_CORTO[t]} ${bloque(i0).inicio}-${bloque(prev).fin}` });
+          i0 = b; prev = b;
+        });
+      });
+      partes.sort((x, y) => x.s - y.s);
+      return partes.length ? `<b>${DIAS_CORTO[d]}</b> ${partes.map(x => esc(x.t)).join(', ')}` : '';
+    }).filter(Boolean).join('<br>');
+    const cnt = t => c.req[t] || usados(c, t) ? `<span class="${usados(c, t) === c.req[t] ? 'ok' : 'mal'}">${usados(c, t)}/${c.req[t]}</span>` : '—';
+    return `<tr>
+      <td><span class="ir" data-ir="${esc(c.codigo)}" title="Ver en la grilla">${esc(nombreCurso(c))}</span><div style="color:#888;font-size:11px">${esc(c.area)}</div></td>
+      <td>${esc(c.titulo)}<div style="color:#888;font-size:11px">${esc([c.prof1.nombre, c.prof2.nombre].filter(Boolean).join(' / '))}</div></td>
+      <td>${c.cohorts.map(x => `<span class="cbadge">${esc(cohortLabel(x))}</span>`).join(' ') || '—'}</td>
+      <td>${horario || '<span style="color:#bbb">sin horario</span>'}</td>
+      <td style="text-align:center">${cnt('CLAS')}</td><td style="text-align:center">${cnt('AYUD')}</td><td style="text-align:center">${cnt('LABT')}</td>
+      <td class="dist ${e.acep && e.dist.estado === 'mal' ? 'acep' : e.dist.estado}">${esc(e.dist.texto)}${e.dist.nota ? `<div class="warn nota" style="font-size:11px">${esc(e.dist.nota)}</div>` : ''}</td>
+      <td class="estado ${e.acep ? 'aceptado' : ''}">${e.hayError ? '' : (e.acep ? '<span class="ok">OK · avisos aceptados</span>' : '<span class="ok">OK</span>')}
+        ${e.err.length ? `<div class="mal">${e.err.map(esc).join('<br>')}</div>` : ''}
+        ${e.det.conf.length ? `<div class="det-tit ${e.acep ? '' : 'mal'}">⛔ ${e.det.conf.reduce((a, x) => a + x.n, 0)} bloque(s) con tope${e.acep ? ' (aceptado)' : ''}:</div><ul class="det">${e.det.conf.map(x => `<li><b>${esc(x.msg)}</b><br><span>${esc(x.donde)}</span></li>`).join('')}</ul>` : ''}
+        ${e.dist.estado === 'mal' ? `<div class="${e.acep ? '' : 'mal'}" style="font-size:11.5px;margin-top:3px">Distribución incorrecta${e.acep ? ' (aceptada)' : ''}</div>` : ''}
+        ${e.jor.length ? `<div class="det-tit ${e.acep ? '' : 'jor'}">👤 Alerta JORNADA${e.acep ? ' (aceptada)' : ''}:</div><ul class="det jorl">${e.jor.map(x => `<li><b>${esc(x.msg)}</b><br><span>${esc(x.donde)}</span></li>`).join('')}</ul>` : ''}
+        ${e.det.warn.length ? `<ul class="det warnl">${e.det.warn.map(x => `<li>🔒 ${esc(x.msg)}: ${esc(x.donde)}</li>`).join('')}</ul>` : ''}
+        ${e.av.length ? `<div class="issue" style="font-size:11px">${e.av.map(esc).join('<br>')}</div>` : ''}</td>
+      <td class="revision">${renderRevision(c, e)}</td></tr>`;
+  }).join('');
+  return `<div class="resumen"><div class="resumen-top">
+      <span class="kpi"><b>${cursos.length}</b>secciones</span>
+      <span class="kpi"><b style="color:var(--ok)">${ok}</b>completas sin topes</span>
+      <span class="kpi"><b style="color:#c62828">${mal}</b>con pendientes o topes</span>
+      <span class="kpi"><b style="color:#2e7d32">${nAcep}</b>con avisos aceptados</span>
+      <span class="kpi" style="color:#999">Clic en el curso para verlo en la grilla.</span></div>
+    <table><thead><tr><th>Curso</th><th>Título / profesor</th><th>Semestre</th><th>Horario actual</th><th>CLAS</th><th>AYUD</th><th>LAB</th><th>Distribución</th><th>Estado</th><th>Revisión</th></tr></thead>
+    <tbody>${filas || '<tr><td colspan="10" style="color:#999;padding:20px">No hay cursos con estos filtros.</td></tr>'}</tbody></table></div>`;
+}
+
+/* ===================================================================
+ * Render
+ * =================================================================== */
+function render() {
+  if (!S.data) return;
+  analizar();
+  calcularAceptaciones();
+  const sb = document.querySelector('.sidebar-wrap'); const sbs = sb ? sb.scrollTop : 0;
+  document.querySelectorAll('#segVista button').forEach(b => b.classList.toggle('active', b.dataset.vista === S.vista));
+  document.getElementById('groupTabs').innerHTML = GRUPOS.map(g => {
+    const cs = [...S.courses.values()].filter(c => enGrupo(c, g.id) && pasaFiltros(c));
+    const pend = cs.filter(tienePendientes).length;
+    return `<button class="group-tab ${S.grupo === g.id ? 'active' : ''}" data-grupo="${g.id}" style="border-bottom-color:${S.grupo === g.id ? g.color : 'transparent'}"
+      title="${cs.length} secciones${pend ? ' · ' + pend + ' con horas sin programar' : ''}">${g.nombre}<span class="cnt">${cs.length}</span>${pend ? `<span class="pend-badge">${pend}</span>` : ''}</button>`;
+  }).join('');
+  const totPend = [...S.courses.values()].filter(tienePendientes).length;
+  const bp = document.getElementById('btnPend');
+  bp.style.display = totPend ? '' : 'none';
+  bp.innerHTML = `⏳ ${totPend} con horas sin programar`;
+  document.getElementById('btnLimpiar').style.display = (S.fEsp !== 'TODOS' || S.fSem.length || S.fBuscar) ? '' : 'none';
+  const content = document.getElementById('content');
+  if (S.vista === 'resumen') { content.innerHTML = avisoSinMandante() + renderResumen(); return; }
+  content.innerHTML = avisoSinMandante() + `<div class="layout"><div>${renderGrilla()}${renderLeyenda()}</div><div class="sidebar-wrap">${renderSidebar()}</div></div>`;
+  const sb2 = document.querySelector('.sidebar-wrap'); if (sb2) sb2.scrollTop = sbs;
+}
+
+/* ===================================================================
+ * Cambios (se escriben en MAESTRO)
+ * =================================================================== */
+async function enviar(ops, mensajesOk) {
+  // aplicar local (optimista)
+  ops.forEach(op => {
+    const c = S.courses.get(op.courseId);
+    const set = new Set(c.sched[op.dia][op.type]);
+    if (op.accion === 'remove') set.delete(op.bloque); else set.add(op.bloque);
+    c.sched[op.dia][op.type] = [...set].sort((a, b) => a - b);
+    if (op.accion === 'add') S.pendientes.add(op.courseId + '|' + op.dia + '|' + op.type + '|' + op.bloque);
+  });
+  render();
+  if (mensajesOk && mensajesOk.length) toast(mensajesOk.join('\n'), 'warn');
+  setSaving(1);
+  try {
+    const r = await srv('phrModificar', ops.map(o => {
+      const c = S.courses.get(o.courseId);
+      return { courseId: c.id, codigo: c.codigo, seccion: c.seccion, dia: o.dia, type: o.type, bloque: o.bloque, accion: o.accion };
+    }));
+    (r.cells || []).forEach(cell => {
+      const c = S.courses.get(cell.oldCourseId);
+      if (!c) return;
+      c.sched[cell.dia] = cell.bloques;
+      if (cell.oldCourseId !== cell.courseId) { toast('Las filas del MAESTRO cambiaron de posición. Recargando…'); setTimeout(cargar, 800); }
+    });
+    ops.forEach(op => S.pendientes.delete(op.courseId + '|' + op.dia + '|' + op.type + '|' + op.bloque));
+    setSaving(-1);
+  } catch (e) {
+    ops.forEach(op => {
+      const c = S.courses.get(op.courseId);
+      const set = new Set(c.sched[op.dia][op.type]);
+      if (op.accion === 'remove') set.add(op.bloque); else set.delete(op.bloque);
+      c.sched[op.dia][op.type] = [...set].sort((a, b) => a - b);
+      S.pendientes.delete(op.courseId + '|' + op.dia + '|' + op.type + '|' + op.bloque);
+    });
+    setSaving(-1, true);
+    toast('No se pudo guardar: ' + e.message, 'err');
+  }
+  render();
+}
+
+function avisosDe(c, type, dia, b, ignorar) {
+  const r = evaluarBloque(c, type, dia, b, ignorar);
+  return r.conf.map(x => `${nombreCurso(c)} ${c.titulo} (${TIPO_CORTO[type]} ${DIAS_CORTO[dia]} ${bloqueTxt(b)}): ${x}`);
+}
+
+function programar(it, dia, b0) {
+  const ops = [], avisos = [], sinEspacio = [];
+  it.cursos.forEach(c => {
+    let quedan = c.req[it.col] - usados(c, it.col);
+    if (quedan <= 0) return;
+    for (let k = 0; k < S.nDrop && quedan > 0; k++) {
+      const b = b0 + k;
+      if (b >= S.data.bloques.length) { sinEspacio.push(nombreCurso(c)); break; }
+      if ((c.sched[dia][it.col] || []).includes(b)) continue;
+      avisosDe(c, it.col, dia, b).forEach(x => avisos.push(x));
+      ops.push({ courseId: c.id, dia, type: it.col, bloque: b, accion: 'add' });
+      quedan--;
+    }
+  });
+  if (!ops.length) { toast('Nada que agregar: ya está en ese bloque o completó sus horas.'); return; }
+  if (sinEspacio.length) avisos.push('No caben más bloques después de ' + bloqueTxt(S.data.bloques.length - 1));
+  enviar(ops, [...new Set(avisos)]);
+}
+
+function moverVarios(ps, dia, b) {
+  if (ps.length === 1) return mover(ps[0], dia, b);
+  const ign = new Set(ps.map(pk));
+  const ops = [], av = [];
+  ps.forEach(p => {
+    if (p.dia === dia && p.b === b) return;
+    const c = S.courses.get(p.courseId);
+    if ((c.sched[dia][p.type] || []).includes(b)) return;
+    avisosDe(c, p.type, dia, b, ign).forEach(x => av.push(x));
+    ops.push({ courseId: c.id, dia: p.dia, type: p.type, bloque: p.b, accion: 'remove' });
+    ops.push({ courseId: c.id, dia, type: p.type, bloque: b, accion: 'add' });
+  });
+  if (!ops.length) return;
+  enviar(ops, [...new Set(av)]);
+}
+
+function mover(p, dia, b) {
+  if (p.dia === dia && p.b === b) return;
+  const c = S.courses.get(p.courseId);
+  if ((c.sched[dia][p.type] || []).includes(b)) { toast('Ese curso ya tiene ese bloque.'); return; }
+  const av = avisosDe(c, p.type, dia, b, pk(p));
+  enviar([{ courseId: c.id, dia: p.dia, type: p.type, bloque: p.b, accion: 'remove' },
+          { courseId: c.id, dia, type: p.type, bloque: b, accion: 'add' }], av);
+}
+
+function quitarVarios(ps) {
+  enviar(ps.map(p => ({ courseId: p.courseId, dia: p.dia, type: p.type, bloque: p.b, accion: 'remove' })));
+}
+
+function quitar(p) {
+  enviar([{ courseId: p.courseId, dia: p.dia, type: p.type, bloque: p.b, accion: 'remove' }]);
+}
+function placedDeKey(k) {
+  const [courseId, dia, type, b] = k.split('|');
+  return { courseId, dia: +dia, type, b: +b };
+}
+
+/* ===================================================================
+ * Arrastrar y soltar
+ * =================================================================== */
+function marcarCeldas(cursos, type, ignorar) {
+  document.body.classList.add('dragging');
+  document.querySelectorAll('.cell[data-dia]').forEach(el => {
+    const dia = +el.dataset.dia, b = +el.dataset.b;
+    let no = false, warn = false;
+    cursos.forEach(c => {
+      const r = evaluarBloque(c, type, dia, b, ignorar);
+      if (r.conf.some(x => x.startsWith('Fuera de disponibilidad'))) no = true;
+      else if (r.conf.length || r.warn.length) warn = true;
+    });
+    el.classList.add(no ? 'dnd-no' : warn ? 'dnd-warn' : 'dnd-ok');
+  });
+}
+function limpiarCeldas() {
+  document.body.classList.remove('dragging');
+  document.querySelectorAll('.dnd-ok,.dnd-warn,.dnd-no,.dnd-over').forEach(el => el.classList.remove('dnd-ok', 'dnd-warn', 'dnd-no', 'dnd-over'));
+  const sb = document.getElementById('sidebar'); if (sb) sb.classList.remove('drop-remove');
+}
+
+document.addEventListener('dragstart', e => {
+  const post = e.target.closest && e.target.closest('.postit[data-item]');
+  const tag = e.target.closest && e.target.closest('.hr-tag[data-p]');
+  const grp = e.target.closest && e.target.closest('.hr-tag[data-g]');
+  if (grp) {
+    const ps = grp.dataset.g.split(';').map(placedDeKey);
+    DRAG = { kind: 'moverG', ps };
+    e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', grp.dataset.g);
+    setTimeout(() => marcarCeldas(ps.map(p => S.courses.get(p.courseId)), ps[0].type, new Set(ps.map(pk))), 0);
+    return;
+  }
+  if (post) {
+    const it = S._items.get(post.dataset.item);
+    if (!it || post.getAttribute('draggable') !== 'true') { e.preventDefault(); return; }
+    DRAG = { kind: 'nuevo', it };
+    e.dataTransfer.effectAllowed = 'copyMove'; e.dataTransfer.setData('text/plain', it.key);
+    setTimeout(() => marcarCeldas(it.cursos, it.col), 0);
+  } else if (tag) {
+    const p = placedDeKey(tag.dataset.p);
+    DRAG = { kind: 'mover', p };
+    e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', tag.dataset.p);
+    setTimeout(() => marcarCeldas([S.courses.get(p.courseId)], p.type, tag.dataset.p), 0);
+  }
+});
+document.addEventListener('dragend', () => { DRAG = null; limpiarCeldas(); });
+document.addEventListener('dragover', e => {
+  if (!DRAG) return;
+  const cell = e.target.closest && e.target.closest('.cell[data-dia]');
+  const sb = e.target.closest && e.target.closest('#sidebar');
+  document.querySelectorAll('.dnd-over').forEach(el => { if (el !== cell) el.classList.remove('dnd-over'); });
+  if (cell) { e.preventDefault(); cell.classList.add('dnd-over'); }
+  else if (sb && (DRAG.kind === 'mover' || DRAG.kind === 'moverG')) { e.preventDefault(); sb.classList.add('drop-remove'); }
+  const s = document.getElementById('sidebar'); if (s && !sb) s.classList.remove('drop-remove');
+});
+document.addEventListener('drop', e => {
+  if (!DRAG) return;
+  e.preventDefault();
+  const d = DRAG; DRAG = null; limpiarCeldas();
+  const cell = e.target.closest && e.target.closest('.cell[data-dia]');
+  const sb = e.target.closest && e.target.closest('#sidebar');
+  if (cell) {
+    const dia = +cell.dataset.dia, b = +cell.dataset.b;
+    if (d.kind === 'nuevo') programar(d.it, dia, b);
+    else if (d.kind === 'moverG') moverVarios(d.ps, dia, b);
+    else mover(d.p, dia, b);
+  } else if (sb && d.kind === 'mover') quitar(d.p);
+  else if (sb && d.kind === 'moverG') quitarVarios(d.ps);
+});
+
+/* ===================================================================
+ * Controles
+ * =================================================================== */
+document.addEventListener('click', e => {
+  const q = s => e.target.closest && e.target.closest(s);
+  let el;
+  if (e.target.id === 'btnPend') {
+    S.grupo = 'todos'; S.vista = 'grilla'; S.ocultarCompletos = true; S.sbTipo = 'todos';
+    S.fEsp = 'TODOS'; S.fSem = []; S.fBuscar = '';
+    document.getElementById('fEsp').value = 'TODOS'; document.getElementById('fBuscar').value = '';
+    pintarSemestres(); render(); window.scrollTo({ top: 0 });
+    toast('Mostrando todas las secciones con horas sin programar (pestaña "Todos", completas ocultas).');
+    return;
+  }
+  if ((el = q('[data-cerrarmand]'))) { S.ocultarAvisoMand = true; render(); return; }
+  if ((el = q('[data-aceptar]'))) { aceptarRevision(el.dataset.aceptar); }
+  else if ((el = q('[data-deshacer]'))) { deshacerRevision(el.dataset.deshacer); }
+  else if ((el = q('[data-quitarg]'))) { e.stopPropagation(); quitarVarios(el.dataset.quitarg.split(';').map(placedDeKey)); }
+  else if ((el = q('[data-sepgrid]'))) { e.stopPropagation(); S.sepGrid.add(el.dataset.sepgrid); render(); }
+  else if ((el = q('[data-juntgrid]'))) { e.stopPropagation(); S.sepGrid.delete(el.dataset.juntgrid); render(); }
+  else if ((el = q('[data-quitar]'))) { e.stopPropagation(); quitar(placedDeKey(el.dataset.quitar)); }
+  else if ((el = q('[data-sbtipo]'))) { S.sbTipo = el.dataset.sbtipo; render(); }
+  else if ((el = q('[data-compacto]'))) { S.compacto = el.dataset.compacto === '1'; document.body.classList.toggle('compacto', S.compacto); render(); }
+  else if ((el = q('[data-ndrop]'))) { S.nDrop = +el.dataset.ndrop; render(); }
+  else if ((el = q('[data-separar]'))) { S.separados.add(el.dataset.separar); render(); }
+  else if ((el = q('[data-unir]'))) { S.separados.delete(el.dataset.unir); render(); }
+  else if ((el = q('[data-grupo]'))) { S.grupo = el.dataset.grupo; render(); }
+  else if ((el = q('[data-vista]'))) { S.vista = el.dataset.vista; render(); }
+  else if ((el = q('[data-ir]'))) { S.vista = 'grilla'; irACurso(el.dataset.ir); }
+});
+document.addEventListener('change', e => { if (e.target.id === 'chkCompletos') { S.ocultarCompletos = e.target.checked; render(); } });
+document.getElementById('fEsp').addEventListener('change', e => { S.fEsp = e.target.value; render(); });
+/* ---- Buscador de cursos: busca en todas las pestañas y salta al curso ---- */
+let tB = null, sugSel = -1, sugLista = [];
+function coincide(c, q) {
+  const hay = norm([c.codigo, c.titulo, c.prof1.nombre, c.prof2.nombre, c.labtNombre, c.area, c.seccion].join(' '));
+  return norm(q).split(/\s+/).filter(Boolean).every(w => hay.includes(w));
+}
+function semestresTxt(cs) {
+  const t = new Set(); cs.forEach(c => c.cohorts.forEach(x => t.add((x.major === PC ? 'PC' : x.major) + ' ' + x.num)));
+  return [...t].slice(0, 4).join(', ') + (t.size > 4 ? '…' : '') || 'Sin semestre';
+}
+function pintarSugerencias() {
+  const box = document.getElementById('sugBuscar'), q = document.getElementById('fBuscar').value.trim();
+  if (!q || !S.data) { box.classList.remove('open'); sugLista = []; return; }
+  const porCod = new Map();
+  [...S.courses.values()].filter(c => coincide(c, q)).forEach(c => { if (!porCod.has(c.codigo)) porCod.set(c.codigo, []); porCod.get(c.codigo).push(c); });
+  sugLista = [...porCod.entries()].sort((a, b) => {
+    const qa = norm(q), sa = norm(a[0]).startsWith(qa) ? 0 : 1, sb = norm(b[0]).startsWith(qa) ? 0 : 1;
+    return sa - sb || a[0].localeCompare(b[0]);
+  }).slice(0, 15);
+  if (sugSel >= sugLista.length) sugSel = sugLista.length - 1;
+  box.innerHTML = sugLista.length ? sugLista.map(([cod, cs], i) => {
+    const pend = cs.filter(tienePendientes).length;
+    return `<div class="sug-item ${i === sugSel ? 'sel' : ''}" data-sug="${esc(cod)}"><span class="cod">${esc(cod)}</span>
+      <span class="tit" title="${esc(cs[0].titulo)}">${esc(cs[0].titulo)}</span>
+      <span class="meta">${cs.length} secc. · ${esc(semestresTxt(cs))}${pend ? ` · <span class="pend">⏳ ${pend}</span>` : ''}</span></div>`;
+  }).join('') + (porCod.size > 15 ? `<div class="sug-vacio">… y ${porCod.size - 15} más. Sigue escribiendo para acotar.</div>` : '')
+    : '<div class="sug-vacio">Ningún curso coincide.</div>';
+  box.classList.add('open');
+}
+function irACurso(cod) {
+  const cs = [...S.courses.values()].filter(c => c.codigo === cod);
+  if (!cs.length) return;
+  S.fBuscar = cod; document.getElementById('fBuscar').value = cod;
+  // Si los filtros de especialidad/semestre lo ocultan, se limpian
+  if (!cs.some(pasaFiltros)) { S.fEsp = 'TODOS'; S.fSem = []; document.getElementById('fEsp').value = 'TODOS'; pintarSemestres(); }
+  if (!cs.some(c => enGrupo(c, S.grupo))) S.grupo = [...gruposCurso(cs[0])][0];
+  S.ocultarCompletos = false;
+  document.getElementById('sugBuscar').classList.remove('open'); sugSel = -1;
+  render(); window.scrollTo({ top: 0 });
+  const g = GRUPOS.find(x => x.id === S.grupo);
+  toast(`${cod} · ${cs[0].titulo}: ${cs.length} sección(es)${g ? ' — pestaña ' + g.nombre : ''}.`);
+}
+function aplicarBusqueda() {
+  S.fBuscar = document.getElementById('fBuscar').value.trim();
+  // Si en la pestaña actual no hay coincidencias pero sí en otra, se cambia a esa pestaña
+  if (S.fBuscar) {
+    const cs = [...S.courses.values()].filter(pasaFiltros);
+    if (cs.length && !cs.some(c => enGrupo(c, S.grupo))) {
+      const g = GRUPOS.find(x => x.id !== 'todos' && cs.some(c => enGrupo(c, x.id)));
+      S.grupo = g ? g.id : 'todos';
+    }
+  }
+  render();
+}
+const inpB = document.getElementById('fBuscar');
+inpB.addEventListener('input', () => { sugSel = -1; pintarSugerencias(); clearTimeout(tB); tB = setTimeout(aplicarBusqueda, 250); });
+inpB.addEventListener('focus', pintarSugerencias);
+inpB.addEventListener('keydown', e => {
+  const box = document.getElementById('sugBuscar');
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    if (!sugLista.length) return; e.preventDefault();
+    sugSel = (sugSel + (e.key === 'ArrowDown' ? 1 : -1) + sugLista.length) % sugLista.length; pintarSugerencias();
+  } else if (e.key === 'Enter') {
+    e.preventDefault(); clearTimeout(tB);
+    if (sugSel >= 0 && sugLista[sugSel]) irACurso(sugLista[sugSel][0]);
+    else if (sugLista.length === 1) irACurso(sugLista[0][0]);
+    else { box.classList.remove('open'); aplicarBusqueda(); }
+  } else if (e.key === 'Escape') { box.classList.remove('open'); sugSel = -1; }
+});
+document.addEventListener('mousedown', e => {
+  const it = e.target.closest && e.target.closest('[data-sug]');
+  if (it) { e.preventDefault(); clearTimeout(tB); irACurso(it.dataset.sug); return; }
+  if (!e.target.closest || !e.target.closest('.buscador')) document.getElementById('sugBuscar').classList.remove('open');
+});
+inpB.addEventListener('search', () => { if (!inpB.value) { clearTimeout(tB); sugSel = -1; pintarSugerencias(); aplicarBusqueda(); } });
+document.getElementById('btnLimpiar').addEventListener('click', () => {
+  S.fEsp = 'TODOS'; S.fSem = []; S.fBuscar = '';
+  document.getElementById('fEsp').value = 'TODOS'; document.getElementById('fBuscar').value = '';
+  pintarSemestres(); render();
+});
+document.getElementById('btnReload').addEventListener('click', () => { if (S.pend > 0) { toast('Espera a que termine de guardar.'); return; } cargar(); });
+function pintarSemestres() {
+  document.getElementById('fSem').innerHTML = [1,2,3,4,5,6,7,8,9,10,11].map(n =>
+    `<label><input type="checkbox" data-sem="${n}" ${S.fSem.length === 0 || S.fSem.includes(n) ? 'checked' : ''}>${n}</label>`).join('');
+}
+document.getElementById('fSem').addEventListener('change', e => {
+  const n = +e.target.dataset.sem; if (!n) return;
+  let nv;
+  if (S.fSem.length === 0) nv = [1,2,3,4,5,6,7,8,9,10,11].filter(x => x !== n);
+  else if (S.fSem.includes(n)) nv = S.fSem.filter(x => x !== n);
+  else nv = [...S.fSem, n];
+  S.fSem = nv.length === 11 ? [] : nv;
+  pintarSemestres(); render();
+});
+window.addEventListener('beforeunload', e => { if (S.pend > 0) { e.preventDefault(); e.returnValue = ''; } });
+function fijarBarra() { const t = document.querySelector('.toolbar'); document.documentElement.style.setProperty('--barra', (t ? t.offsetHeight : 64) + 'px'); }
+window.addEventListener('resize', fijarBarra);
+if (window.ResizeObserver) new ResizeObserver(fijarBarra).observe(document.querySelector('.toolbar'));
+
+pintarSemestres();
+fijarBarra();
+cargar();
+</script>
+</body>
+</html>
