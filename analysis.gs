@@ -425,6 +425,8 @@ function verificarCasillastodasVacias(lista, indices) {
 //                                             LAB de cursos sin CLAS) para cursos con "1" en "Plan Común"
 //   fin_por_codigo                          → {CODIGO: fecha}: fin propio de todos los bloques de ese curso
 //                                             (ING1103 Programación, ING6103 Proyecto de Título 2)
+// Cursos con AREA = FACULTAD CEG: terminan el día anterior a su EXAM (todos sus bloques).
+// Sin EXAM en el calendario, usan el fin general.
 function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_completo,periodos){
   const col_area=obtenerNumeroDeColumna(hoja_maestro,"AREA",1)
   const col_codigo=obtenerNumeroDeColumna(hoja_maestro,"CODIGO",1)
@@ -532,7 +534,12 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
     const esPrimerSemestre = !!P.iniClasPrimerSemestre && col_plan_comun>=0 &&
       dpsa_tieneSemestre_(entrada[col_plan_comun],"1")
     const iniClasCurso = esPrimerSemestre ? P.iniClasPrimerSemestre : P.iniClas
-    const finCurso = P.finPorCodigo[dpsa_norm_(codigo)] || null
+    // Prioridad del fin: código con fin propio > FACULTAD CEG (día antes del EXAM) > fin general
+    let finCurso = P.finPorCodigo[dpsa_norm_(codigo)] || null
+    if(!finCurso && dpsa_norm_(entrada[col_area])=="FACULTAD CEG"){
+      const fechaExamen=dpsa_primeraFechaExamen_(entrada,columnasFecha)
+      if(fechaExamen) finCurso=dpsa_sumarDias_(fechaExamen,-1)
+    }
 
     // Lista cruzada no mandante: solo la fila base
     if(noMandanteLC){
@@ -703,6 +710,18 @@ function rellenar_dpsa(data_maestro,col_dias,dias,hoja_maestro,encabezado_comple
 }
 
 // ---------- helpers DPSA ----------
+// Primera fecha con un token EXAM en las columnas del calendario de la fila (o null).
+function dpsa_primeraFechaExamen_(entrada,columnasFecha){
+  let primera=null
+  columnasFecha.forEach(({col,fecha})=>{
+    const tieneExamen=String(entrada[col]||"").split(",").some(t=>{
+      const ev=dpsa_parsearTokenEvaluacion_(t)
+      return ev&&ev.tipo=="EXAM"
+    })
+    if(tieneExamen&&(!primera||fecha<primera)) primera=fecha
+  })
+  return primera
+}
 // ¿La celda de semestre (ej. "1", "1, 3", "1/2") incluye el semestre indicado?
 function dpsa_tieneSemestre_(valor,semestre){
   return String(valor==null?"":valor).split(/[^0-9A-Za-z]+/).some(t=>t.trim()===semestre)
